@@ -1,0 +1,29 @@
+@MigraineDiary.Api_HostAddress = https://localhost:7190
+
+### Регистрация
+
+POST {{MigraineDiary.Api_HostAddress}}/api/auth/register
+Content-Type: application/json
+
+{
+  "name": "Kirill",
+  "email": "kirill@example.com",
+  "password": "Password123",
+  "confirmPassword": "Password123"
+}
+
+### Авторизация
+
+POST {{MigraineDiary.Api_HostAddress}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "kirill@example.com",
+  "password": "Password123"
+}
+
+### Текущий пользователь
+# Вставить access token после Bearer
+
+GET {{MigraineDiary.Api_HostAddress}}/api/auth/me
+Authorization: Bearer YOUR_ACCESS_TOKEN
