@@ -22,4 +22,7 @@ public sealed class CreateMigraineAttackRequest
 
     [MaxLength(4000)]
     public string? Notes { get; init; }
+
+    public IReadOnlyCollection<AttackSymptomRequest> Symptoms { get; init; }
+    = Array.Empty<AttackSymptomRequest>();
 }

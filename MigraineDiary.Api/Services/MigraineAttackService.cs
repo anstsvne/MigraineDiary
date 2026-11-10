@@ -16,9 +16,9 @@ public sealed class MigraineAttackService
     }
 
     public async Task<MigraineAttackResponse> CreateAsync(
-        Guid userId,
-        CreateMigraineAttackRequest request,
-        CancellationToken cancellationToken = default)
+    Guid userId,
+    CreateMigraineAttackRequest request,
+    CancellationToken cancellationToken = default)
     {
         var startAt = request.StartAt!.Value.ToUniversalTime();
         var endAt = request.EndAt!.Value.ToUniversalTime();
@@ -29,6 +29,11 @@ public sealed class MigraineAttackService
                 "Время окончания приступа не может быть раньше времени начала.");
         }
 
+        var symptoms =
+            await ValidateAndNormalizeSymptomsAsync(
+                request.Symptoms,
+                cancellationToken);
+
         var attack = new MigraineAttack
         {
             UserId = userId,
@@ -36,38 +41,40 @@ public sealed class MigraineAttackService
             EndAt = endAt,
             Intensity = request.Intensity,
             PainLocation = request.PainLocation!.Value,
+
             PainLocationDescription =
                 string.IsNullOrWhiteSpace(
                     request.PainLocationDescription)
                     ? null
                     : request.PainLocationDescription.Trim(),
+
             Notes =
                 string.IsNullOrWhiteSpace(request.Notes)
                     ? null
                     : request.Notes.Trim()
         };
 
+        foreach (var symptom in symptoms)
+        {
+            attack.Symptoms.Add(
+                new AttackSymptom
+                {
+                    SymptomId = symptom.Key,
+                    Description = symptom.Value
+                });
+        }
+
         _dbContext.MigraineAttacks.Add(attack);
 
         await _dbContext.SaveChangesAsync(
             cancellationToken);
 
-        return new MigraineAttackResponse
-        {
-            Id = attack.Id,
-            StartAt = attack.StartAt,
-            EndAt = attack.EndAt,
-            DurationMinutes =
-                (attack.EndAt - attack.StartAt)
-                .TotalMinutes,
-            Intensity = attack.Intensity,
-            PainLocation = attack.PainLocation,
-            PainLocationDescription =
-                attack.PainLocationDescription,
-            Notes = attack.Notes,
-            CreatedAt = attack.CreatedAt
-        };
+        return (await GetByIdAsync(
+            userId,
+            attack.Id,
+            cancellationToken))!;
     }
+
     public async Task<IReadOnlyList<MigraineAttackResponse>> GetAllAsync(
     Guid userId,
     CancellationToken cancellationToken = default)
@@ -88,7 +95,17 @@ public sealed class MigraineAttackService
                 PainLocationDescription =
                     x.PainLocationDescription,
                 Notes = x.Notes,
-                CreatedAt = x.CreatedAt
+                CreatedAt = x.CreatedAt,
+
+                Symptoms = x.Symptoms
+                    .OrderBy(s => s.Symptom.Name)
+                    .Select(s => new AttackSymptomResponse
+                    {
+                        SymptomId = s.SymptomId,
+                        Name = s.Symptom.Name,
+                        Description = s.Description
+                    })
+                    .ToList()
             })
             .ToListAsync(cancellationToken);
     }
@@ -115,17 +132,29 @@ public sealed class MigraineAttackService
                 PainLocationDescription =
                     x.PainLocationDescription,
                 Notes = x.Notes,
-                CreatedAt = x.CreatedAt
+                CreatedAt = x.CreatedAt,
+
+                Symptoms = x.Symptoms
+                    .OrderBy(s => s.Symptom.Name)
+                    .Select(s => new AttackSymptomResponse
+                    {
+                        SymptomId = s.SymptomId,
+                        Name = s.Symptom.Name,
+                        Description = s.Description
+                    })
+                    .ToList()
             })
             .SingleOrDefaultAsync(cancellationToken);
     }
+
     public async Task<MigraineAttackResponse?> UpdateAsync(
-    Guid userId,
-    Guid attackId,
-    UpdateMigraineAttackRequest request,
-    CancellationToken cancellationToken = default)
+     Guid userId,
+     Guid attackId,
+     UpdateMigraineAttackRequest request,
+     CancellationToken cancellationToken = default)
     {
         var attack = await _dbContext.MigraineAttacks
+            .Include(x => x.Symptoms)
             .SingleOrDefaultAsync(
                 x =>
                     x.Id == attackId &&
@@ -146,6 +175,11 @@ public sealed class MigraineAttackService
                 "Время окончания приступа не может быть раньше времени начала.");
         }
 
+        var requestedSymptoms =
+            await ValidateAndNormalizeSymptomsAsync(
+                request.Symptoms,
+                cancellationToken);
+
         attack.StartAt = startAt;
         attack.EndAt = endAt;
         attack.Intensity = request.Intensity;
@@ -162,25 +196,46 @@ public sealed class MigraineAttackService
                 ? null
                 : request.Notes.Trim();
 
+        var symptomsToRemove = attack.Symptoms
+            .Where(x =>
+                !requestedSymptoms.ContainsKey(
+                    x.SymptomId))
+            .ToList();
+
+        _dbContext.AttackSymptoms.RemoveRange(
+            symptomsToRemove);
+
+        foreach (var requestedSymptom in requestedSymptoms)
+        {
+            var existingSymptom = attack.Symptoms
+                .SingleOrDefault(x =>
+                    x.SymptomId == requestedSymptom.Key);
+
+            if (existingSymptom is null)
+            {
+                attack.Symptoms.Add(
+                    new AttackSymptom
+                    {
+                        SymptomId = requestedSymptom.Key,
+                        Description = requestedSymptom.Value
+                    });
+            }
+            else
+            {
+                existingSymptom.Description =
+                    requestedSymptom.Value;
+            }
+        }
+
         await _dbContext.SaveChangesAsync(
             cancellationToken);
 
-        return new MigraineAttackResponse
-        {
-            Id = attack.Id,
-            StartAt = attack.StartAt,
-            EndAt = attack.EndAt,
-            DurationMinutes =
-                (attack.EndAt - attack.StartAt)
-                .TotalMinutes,
-            Intensity = attack.Intensity,
-            PainLocation = attack.PainLocation,
-            PainLocationDescription =
-                attack.PainLocationDescription,
-            Notes = attack.Notes,
-            CreatedAt = attack.CreatedAt
-        };
+        return await GetByIdAsync(
+            userId,
+            attackId,
+            cancellationToken);
     }
+
     public async Task<bool> DeleteAsync(
     Guid userId,
     Guid attackId,
@@ -204,5 +259,49 @@ public sealed class MigraineAttackService
             cancellationToken);
 
         return true;
+    }
+
+    private async Task<Dictionary<Guid, string?>>
+    ValidateAndNormalizeSymptomsAsync(
+        IReadOnlyCollection<AttackSymptomRequest> symptoms,
+        CancellationToken cancellationToken)
+    {
+        if (symptoms.Count == 0)
+        {
+            return new Dictionary<Guid, string?>();
+        }
+
+        if (symptoms.Any(x => x.SymptomId == Guid.Empty))
+        {
+            throw new ArgumentException(
+                "Идентификатор симптома не может быть пустым.");
+        }
+
+        var symptomIds = symptoms
+            .Select(x => x.SymptomId)
+            .ToArray();
+
+        if (symptomIds.Distinct().Count() != symptomIds.Length)
+        {
+            throw new ArgumentException(
+                "Один и тот же симптом нельзя указать несколько раз.");
+        }
+
+        var existingIds = await _dbContext.Symptoms
+            .Where(x => symptomIds.Contains(x.Id))
+            .Select(x => x.Id)
+            .ToListAsync(cancellationToken);
+
+        if (existingIds.Count != symptomIds.Length)
+        {
+            throw new ArgumentException(
+                "Один или несколько указанных симптомов не существуют.");
+        }
+
+        return symptoms.ToDictionary(
+            x => x.SymptomId,
+            x => string.IsNullOrWhiteSpace(x.Description)
+                ? null
+                : x.Description.Trim());
     }
 }
