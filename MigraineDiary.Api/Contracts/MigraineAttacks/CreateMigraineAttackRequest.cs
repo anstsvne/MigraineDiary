@@ -25,4 +25,7 @@ public sealed class CreateMigraineAttackRequest
 
     public IReadOnlyCollection<AttackSymptomRequest> Symptoms { get; init; }
     = Array.Empty<AttackSymptomRequest>();
+
+    public IReadOnlyCollection<AttackTriggerRequest> Triggers { get; init; }
+    = Array.Empty<AttackTriggerRequest>();
 }

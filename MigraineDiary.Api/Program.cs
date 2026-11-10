@@ -76,6 +76,7 @@ builder.Services.AddScoped<JwtTokenService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<MigraineAttackService>();
 builder.Services.AddScoped<SymptomService>();
+builder.Services.AddScoped<TriggerService>();
 
 builder.Services
     .AddControllers()

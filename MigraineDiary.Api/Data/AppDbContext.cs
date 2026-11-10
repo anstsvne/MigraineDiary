@@ -23,6 +23,12 @@ public sealed class AppDbContext : DbContext
     public DbSet<AttackSymptom> AttackSymptoms =>
         Set<AttackSymptom>();
 
+    public DbSet<Trigger> Triggers =>
+    Set<Trigger>();
+
+    public DbSet<AttackTrigger> AttackTriggers =>
+        Set<AttackTrigger>();
+
     protected override void OnModelCreating(
         ModelBuilder modelBuilder)
     {
@@ -163,6 +169,96 @@ public sealed class AppDbContext : DbContext
             entity.HasOne(x => x.Symptom)
                 .WithMany(x => x.AttackSymptoms)
                 .HasForeignKey(x => x.SymptomId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Trigger>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.Name)
+                .HasMaxLength(100)
+                .IsRequired();
+
+            entity.HasIndex(x => x.Name)
+                .IsUnique();
+
+            entity.HasData(
+                new Trigger
+                {
+                    Id = Guid.Parse(
+                        "81111111-1111-1111-1111-111111111111"),
+                    Name = "Stress"
+                },
+                new Trigger
+                {
+                    Id = Guid.Parse(
+                        "82222222-2222-2222-2222-222222222222"),
+                    Name = "LackOfSleep"
+                },
+                new Trigger
+                {
+                    Id = Guid.Parse(
+                        "83333333-3333-3333-3333-333333333333"),
+                    Name = "WeatherChange"
+                },
+                new Trigger
+                {
+                    Id = Guid.Parse(
+                        "84444444-4444-4444-4444-444444444444"),
+                    Name = "Hunger"
+                },
+                new Trigger
+                {
+                    Id = Guid.Parse(
+                        "85555555-5555-5555-5555-555555555555"),
+                    Name = "CertainFoods"
+                },
+                new Trigger
+                {
+                    Id = Guid.Parse(
+                        "86666666-6666-6666-6666-666666666666"),
+                    Name = "PhysicalExertion"
+                },
+                new Trigger
+                {
+                    Id = Guid.Parse(
+                        "87777777-7777-7777-7777-777777777777"),
+                    Name = "BrightLight"
+                },
+                new Trigger
+                {
+                    Id = Guid.Parse(
+                        "88888888-8888-8888-8888-888888888888"),
+                    Name = "LoudNoise"
+                },
+                new Trigger
+                {
+                    Id = Guid.Parse(
+                        "89999999-9999-9999-9999-999999999999"),
+                    Name = "Other"
+                });
+        });
+
+        modelBuilder.Entity<AttackTrigger>(entity =>
+        {
+            entity.HasKey(x => new
+            {
+                x.MigraineAttackId,
+                x.TriggerId
+            });
+
+            entity.Property(x => x.Description)
+                .HasMaxLength(500);
+
+            entity.HasOne(x => x.MigraineAttack)
+                .WithMany(x => x.Triggers)
+                .HasForeignKey(x => x.MigraineAttackId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(x => x.Trigger)
+                .WithMany(x => x.AttackTriggers)
+                .HasForeignKey(x => x.TriggerId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
     }

@@ -41,6 +41,25 @@ namespace MigraineDiary.Api.Migrations
                     b.ToTable("AttackSymptoms");
                 });
 
+            modelBuilder.Entity("MigraineDiary.Api.Entities.AttackTrigger", b =>
+                {
+                    b.Property<Guid>("MigraineAttackId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TriggerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.HasKey("MigraineAttackId", "TriggerId");
+
+                    b.HasIndex("TriggerId");
+
+                    b.ToTable("AttackTriggers");
+                });
+
             modelBuilder.Entity("MigraineDiary.Api.Entities.MigraineAttack", b =>
                 {
                     b.Property<Guid>("Id")
@@ -143,6 +162,72 @@ namespace MigraineDiary.Api.Migrations
                         });
                 });
 
+            modelBuilder.Entity("MigraineDiary.Api.Entities.Trigger", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("Triggers");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("81111111-1111-1111-1111-111111111111"),
+                            Name = "Stress"
+                        },
+                        new
+                        {
+                            Id = new Guid("82222222-2222-2222-2222-222222222222"),
+                            Name = "LackOfSleep"
+                        },
+                        new
+                        {
+                            Id = new Guid("83333333-3333-3333-3333-333333333333"),
+                            Name = "WeatherChange"
+                        },
+                        new
+                        {
+                            Id = new Guid("84444444-4444-4444-4444-444444444444"),
+                            Name = "Hunger"
+                        },
+                        new
+                        {
+                            Id = new Guid("85555555-5555-5555-5555-555555555555"),
+                            Name = "CertainFoods"
+                        },
+                        new
+                        {
+                            Id = new Guid("86666666-6666-6666-6666-666666666666"),
+                            Name = "PhysicalExertion"
+                        },
+                        new
+                        {
+                            Id = new Guid("87777777-7777-7777-7777-777777777777"),
+                            Name = "BrightLight"
+                        },
+                        new
+                        {
+                            Id = new Guid("88888888-8888-8888-8888-888888888888"),
+                            Name = "LoudNoise"
+                        },
+                        new
+                        {
+                            Id = new Guid("89999999-9999-9999-9999-999999999999"),
+                            Name = "Other"
+                        });
+                });
+
             modelBuilder.Entity("MigraineDiary.Api.Entities.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -193,6 +278,25 @@ namespace MigraineDiary.Api.Migrations
                     b.Navigation("Symptom");
                 });
 
+            modelBuilder.Entity("MigraineDiary.Api.Entities.AttackTrigger", b =>
+                {
+                    b.HasOne("MigraineDiary.Api.Entities.MigraineAttack", "MigraineAttack")
+                        .WithMany("Triggers")
+                        .HasForeignKey("MigraineAttackId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MigraineDiary.Api.Entities.Trigger", "Trigger")
+                        .WithMany("AttackTriggers")
+                        .HasForeignKey("TriggerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("MigraineAttack");
+
+                    b.Navigation("Trigger");
+                });
+
             modelBuilder.Entity("MigraineDiary.Api.Entities.MigraineAttack", b =>
                 {
                     b.HasOne("MigraineDiary.Api.Entities.User", "User")
@@ -207,11 +311,18 @@ namespace MigraineDiary.Api.Migrations
             modelBuilder.Entity("MigraineDiary.Api.Entities.MigraineAttack", b =>
                 {
                     b.Navigation("Symptoms");
+
+                    b.Navigation("Triggers");
                 });
 
             modelBuilder.Entity("MigraineDiary.Api.Entities.Symptom", b =>
                 {
                     b.Navigation("AttackSymptoms");
+                });
+
+            modelBuilder.Entity("MigraineDiary.Api.Entities.Trigger", b =>
+                {
+                    b.Navigation("AttackTriggers");
                 });
 
             modelBuilder.Entity("MigraineDiary.Api.Entities.User", b =>

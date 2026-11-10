@@ -24,4 +24,7 @@ public sealed class MigraineAttackResponse
 
     public IReadOnlyCollection<AttackSymptomResponse> Symptoms { get; init; }
     = Array.Empty<AttackSymptomResponse>();
+
+    public IReadOnlyCollection<AttackTriggerResponse> Triggers { get; init; }
+    = Array.Empty<AttackTriggerResponse>();
 }
