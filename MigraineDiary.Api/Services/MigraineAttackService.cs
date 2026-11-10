@@ -16,9 +16,9 @@ public sealed class MigraineAttackService
     }
 
     public async Task<MigraineAttackResponse> CreateAsync(
-    Guid userId,
-    CreateMigraineAttackRequest request,
-    CancellationToken cancellationToken = default)
+        Guid userId,
+        CreateMigraineAttackRequest request,
+        CancellationToken cancellationToken = default)
     {
         var startAt = request.StartAt!.Value.ToUniversalTime();
         var endAt = request.EndAt!.Value.ToUniversalTime();
@@ -32,6 +32,11 @@ public sealed class MigraineAttackService
         var symptoms =
             await ValidateAndNormalizeSymptomsAsync(
                 request.Symptoms,
+                cancellationToken);
+
+        var triggers =
+            await ValidateAndNormalizeTriggersAsync(
+                request.Triggers,
                 cancellationToken);
 
         var attack = new MigraineAttack
@@ -64,6 +69,16 @@ public sealed class MigraineAttackService
                 });
         }
 
+        foreach (var trigger in triggers)
+        {
+            attack.Triggers.Add(
+                new AttackTrigger
+                {
+                    TriggerId = trigger.Key,
+                    Description = trigger.Value
+                });
+        }
+
         _dbContext.MigraineAttacks.Add(attack);
 
         await _dbContext.SaveChangesAsync(
@@ -76,8 +91,8 @@ public sealed class MigraineAttackService
     }
 
     public async Task<IReadOnlyList<MigraineAttackResponse>> GetAllAsync(
-    Guid userId,
-    CancellationToken cancellationToken = default)
+        Guid userId,
+        CancellationToken cancellationToken = default)
     {
         return await _dbContext.MigraineAttacks
             .AsNoTracking()
@@ -88,12 +103,16 @@ public sealed class MigraineAttackService
                 Id = x.Id,
                 StartAt = x.StartAt,
                 EndAt = x.EndAt,
+
                 DurationMinutes =
                     (x.EndAt - x.StartAt).TotalMinutes,
+
                 Intensity = x.Intensity,
                 PainLocation = x.PainLocation,
+
                 PainLocationDescription =
                     x.PainLocationDescription,
+
                 Notes = x.Notes,
                 CreatedAt = x.CreatedAt,
 
@@ -105,15 +124,25 @@ public sealed class MigraineAttackService
                         Name = s.Symptom.Name,
                         Description = s.Description
                     })
+                    .ToList(),
+
+                Triggers = x.Triggers
+                    .OrderBy(t => t.Trigger.Name)
+                    .Select(t => new AttackTriggerResponse
+                    {
+                        TriggerId = t.TriggerId,
+                        Name = t.Trigger.Name,
+                        Description = t.Description
+                    })
                     .ToList()
             })
             .ToListAsync(cancellationToken);
     }
 
     public async Task<MigraineAttackResponse?> GetByIdAsync(
-    Guid userId,
-    Guid attackId,
-    CancellationToken cancellationToken = default)
+        Guid userId,
+        Guid attackId,
+        CancellationToken cancellationToken = default)
     {
         return await _dbContext.MigraineAttacks
             .AsNoTracking()
@@ -125,12 +154,16 @@ public sealed class MigraineAttackService
                 Id = x.Id,
                 StartAt = x.StartAt,
                 EndAt = x.EndAt,
+
                 DurationMinutes =
                     (x.EndAt - x.StartAt).TotalMinutes,
+
                 Intensity = x.Intensity,
                 PainLocation = x.PainLocation,
+
                 PainLocationDescription =
                     x.PainLocationDescription,
+
                 Notes = x.Notes,
                 CreatedAt = x.CreatedAt,
 
@@ -142,19 +175,30 @@ public sealed class MigraineAttackService
                         Name = s.Symptom.Name,
                         Description = s.Description
                     })
+                    .ToList(),
+
+                Triggers = x.Triggers
+                    .OrderBy(t => t.Trigger.Name)
+                    .Select(t => new AttackTriggerResponse
+                    {
+                        TriggerId = t.TriggerId,
+                        Name = t.Trigger.Name,
+                        Description = t.Description
+                    })
                     .ToList()
             })
             .SingleOrDefaultAsync(cancellationToken);
     }
 
     public async Task<MigraineAttackResponse?> UpdateAsync(
-     Guid userId,
-     Guid attackId,
-     UpdateMigraineAttackRequest request,
-     CancellationToken cancellationToken = default)
+        Guid userId,
+        Guid attackId,
+        UpdateMigraineAttackRequest request,
+        CancellationToken cancellationToken = default)
     {
         var attack = await _dbContext.MigraineAttacks
             .Include(x => x.Symptoms)
+            .Include(x => x.Triggers)
             .SingleOrDefaultAsync(
                 x =>
                     x.Id == attackId &&
@@ -178,6 +222,11 @@ public sealed class MigraineAttackService
         var requestedSymptoms =
             await ValidateAndNormalizeSymptomsAsync(
                 request.Symptoms,
+                cancellationToken);
+
+        var requestedTriggers =
+            await ValidateAndNormalizeTriggersAsync(
+                request.Triggers,
                 cancellationToken);
 
         attack.StartAt = startAt;
@@ -227,6 +276,37 @@ public sealed class MigraineAttackService
             }
         }
 
+        var triggersToRemove = attack.Triggers
+            .Where(x =>
+                !requestedTriggers.ContainsKey(
+                    x.TriggerId))
+            .ToList();
+
+        _dbContext.AttackTriggers.RemoveRange(
+            triggersToRemove);
+
+        foreach (var requestedTrigger in requestedTriggers)
+        {
+            var existingTrigger = attack.Triggers
+                .SingleOrDefault(x =>
+                    x.TriggerId == requestedTrigger.Key);
+
+            if (existingTrigger is null)
+            {
+                attack.Triggers.Add(
+                    new AttackTrigger
+                    {
+                        TriggerId = requestedTrigger.Key,
+                        Description = requestedTrigger.Value
+                    });
+            }
+            else
+            {
+                existingTrigger.Description =
+                    requestedTrigger.Value;
+            }
+        }
+
         await _dbContext.SaveChangesAsync(
             cancellationToken);
 
@@ -237,9 +317,9 @@ public sealed class MigraineAttackService
     }
 
     public async Task<bool> DeleteAsync(
-    Guid userId,
-    Guid attackId,
-    CancellationToken cancellationToken = default)
+        Guid userId,
+        Guid attackId,
+        CancellationToken cancellationToken = default)
     {
         var attack = await _dbContext.MigraineAttacks
             .SingleOrDefaultAsync(
@@ -262,9 +342,9 @@ public sealed class MigraineAttackService
     }
 
     private async Task<Dictionary<Guid, string?>>
-    ValidateAndNormalizeSymptomsAsync(
-        IReadOnlyCollection<AttackSymptomRequest> symptoms,
-        CancellationToken cancellationToken)
+        ValidateAndNormalizeSymptomsAsync(
+            IReadOnlyCollection<AttackSymptomRequest> symptoms,
+            CancellationToken cancellationToken)
     {
         if (symptoms.Count == 0)
         {
@@ -300,6 +380,50 @@ public sealed class MigraineAttackService
 
         return symptoms.ToDictionary(
             x => x.SymptomId,
+            x => string.IsNullOrWhiteSpace(x.Description)
+                ? null
+                : x.Description.Trim());
+    }
+
+    private async Task<Dictionary<Guid, string?>>
+        ValidateAndNormalizeTriggersAsync(
+            IReadOnlyCollection<AttackTriggerRequest> triggers,
+            CancellationToken cancellationToken)
+    {
+        if (triggers.Count == 0)
+        {
+            return new Dictionary<Guid, string?>();
+        }
+
+        if (triggers.Any(x => x.TriggerId == Guid.Empty))
+        {
+            throw new ArgumentException(
+                "Идентификатор триггера не может быть пустым.");
+        }
+
+        var triggerIds = triggers
+            .Select(x => x.TriggerId)
+            .ToArray();
+
+        if (triggerIds.Distinct().Count() != triggerIds.Length)
+        {
+            throw new ArgumentException(
+                "Один и тот же триггер нельзя указать несколько раз.");
+        }
+
+        var existingIds = await _dbContext.Triggers
+            .Where(x => triggerIds.Contains(x.Id))
+            .Select(x => x.Id)
+            .ToListAsync(cancellationToken);
+
+        if (existingIds.Count != triggerIds.Length)
+        {
+            throw new ArgumentException(
+                "Один или несколько указанных триггеров не существуют.");
+        }
+
+        return triggers.ToDictionary(
+            x => x.TriggerId,
             x => string.IsNullOrWhiteSpace(x.Description)
                 ? null
                 : x.Description.Trim());

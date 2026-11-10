@@ -27,4 +27,7 @@ public sealed class MigraineAttack
 
     public ICollection<AttackSymptom> Symptoms { get; set; }
     = new List<AttackSymptom>();
+
+    public ICollection<AttackTrigger> Triggers { get; set; }
+    = new List<AttackTrigger>();
 }
