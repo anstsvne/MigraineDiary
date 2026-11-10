@@ -24,4 +24,7 @@ public sealed class MigraineAttack
         = DateTimeOffset.UtcNow;
 
     public User User { get; set; } = null!;
+
+    public ICollection<AttackSymptom> Symptoms { get; set; }
+    = new List<AttackSymptom>();
 }

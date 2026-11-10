@@ -21,4 +21,7 @@ public sealed class MigraineAttackResponse
     public string? Notes { get; init; }
 
     public DateTimeOffset CreatedAt { get; init; }
+
+    public IReadOnlyCollection<AttackSymptomResponse> Symptoms { get; init; }
+    = Array.Empty<AttackSymptomResponse>();
 }
