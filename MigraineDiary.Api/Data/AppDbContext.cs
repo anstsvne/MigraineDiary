@@ -24,10 +24,16 @@ public sealed class AppDbContext : DbContext
         Set<AttackSymptom>();
 
     public DbSet<Trigger> Triggers =>
-    Set<Trigger>();
+        Set<Trigger>();
 
     public DbSet<AttackTrigger> AttackTriggers =>
         Set<AttackTrigger>();
+
+    public DbSet<Medication> Medications =>
+        Set<Medication>();
+
+    public DbSet<AttackMedication> AttackMedications =>
+        Set<AttackMedication>();
 
     protected override void OnModelCreating(
         ModelBuilder modelBuilder)
@@ -260,6 +266,51 @@ public sealed class AppDbContext : DbContext
                 .WithMany(x => x.AttackTriggers)
                 .HasForeignKey(x => x.TriggerId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Medication>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.Name)
+                .HasMaxLength(200)
+                .IsRequired();
+
+            entity.HasOne(x => x.User)
+                .WithMany(x => x.Medications)
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(x => new
+            {
+                x.UserId,
+                x.Name
+            })
+            .IsUnique();
+        });
+
+        modelBuilder.Entity<AttackMedication>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.Dosage)
+                .HasMaxLength(100);
+
+            entity.Property(x => x.TakenAt);
+
+            entity.HasOne(x => x.MigraineAttack)
+                .WithMany(x => x.Medications)
+                .HasForeignKey(x => x.MigraineAttackId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(x => x.Medication)
+                .WithMany(x => x.AttackMedications)
+                .HasForeignKey(x => x.MedicationId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(x => x.MigraineAttackId);
+
+            entity.HasIndex(x => x.MedicationId);
         });
     }
 }
