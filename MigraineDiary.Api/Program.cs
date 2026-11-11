@@ -78,6 +78,7 @@ builder.Services.AddScoped<MigraineAttackService>();
 builder.Services.AddScoped<SymptomService>();
 builder.Services.AddScoped<TriggerService>();
 builder.Services.AddScoped<MedicationService>();
+builder.Services.AddScoped<VitalMeasurementService>();
 
 builder.Services
     .AddControllers()
