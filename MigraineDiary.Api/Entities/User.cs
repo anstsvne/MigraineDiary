@@ -14,8 +14,11 @@ public sealed class User
         = DateTimeOffset.UtcNow;
 
     public ICollection<MigraineAttack> MigraineAttacks { get; set; }
-    = new List<MigraineAttack>();
+        = new List<MigraineAttack>();
 
     public ICollection<Medication> Medications { get; set; }
-    = new List<Medication>();
+        = new List<Medication>();
+
+    public ICollection<VitalMeasurement> VitalMeasurements { get; set; }
+        = new List<VitalMeasurement>();
 }

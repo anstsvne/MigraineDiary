@@ -309,6 +309,48 @@ namespace MigraineDiary.Api.Migrations
                     b.ToTable("Users");
                 });
 
+            modelBuilder.Entity("MigraineDiary.Api.Entities.VitalMeasurement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("DiastolicPressure")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("MeasuredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<int>("Pulse")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SystolicPressure")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "MeasuredAt");
+
+                    b.ToTable("VitalMeasurements", t =>
+                        {
+                            t.HasCheckConstraint("CK_VitalMeasurements_DiastolicPressure", "\"DiastolicPressure\" >= 1 AND \"DiastolicPressure\" <= 200");
+
+                            t.HasCheckConstraint("CK_VitalMeasurements_Pulse", "\"Pulse\" >= 1 AND \"Pulse\" <= 300");
+
+                            t.HasCheckConstraint("CK_VitalMeasurements_SystolicPressure", "\"SystolicPressure\" >= 1 AND \"SystolicPressure\" <= 300");
+                        });
+                });
+
             modelBuilder.Entity("MigraineDiary.Api.Entities.AttackMedication", b =>
                 {
                     b.HasOne("MigraineDiary.Api.Entities.Medication", "Medication")
@@ -388,6 +430,17 @@ namespace MigraineDiary.Api.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("MigraineDiary.Api.Entities.VitalMeasurement", b =>
+                {
+                    b.HasOne("MigraineDiary.Api.Entities.User", "User")
+                        .WithMany("VitalMeasurements")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("MigraineDiary.Api.Entities.Medication", b =>
                 {
                     b.Navigation("AttackMedications");
@@ -417,6 +470,8 @@ namespace MigraineDiary.Api.Migrations
                     b.Navigation("Medications");
 
                     b.Navigation("MigraineAttacks");
+
+                    b.Navigation("VitalMeasurements");
                 });
 #pragma warning restore 612, 618
         }

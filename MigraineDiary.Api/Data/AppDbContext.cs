@@ -35,6 +35,9 @@ public sealed class AppDbContext : DbContext
     public DbSet<AttackMedication> AttackMedications =>
         Set<AttackMedication>();
 
+    public DbSet<VitalMeasurement> VitalMeasurements =>
+        Set<VitalMeasurement>();
+
     protected override void OnModelCreating(
         ModelBuilder modelBuilder)
     {
@@ -311,6 +314,55 @@ public sealed class AppDbContext : DbContext
             entity.HasIndex(x => x.MigraineAttackId);
 
             entity.HasIndex(x => x.MedicationId);
+        });
+
+        modelBuilder.Entity<VitalMeasurement>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.SystolicPressure)
+                .IsRequired();
+
+            entity.Property(x => x.DiastolicPressure)
+                .IsRequired();
+
+            entity.Property(x => x.Pulse)
+                .IsRequired();
+
+            entity.Property(x => x.MeasuredAt)
+                .IsRequired();
+
+            entity.Property(x => x.Notes)
+                .HasMaxLength(1000);
+
+            entity.Property(x => x.CreatedAt)
+                .IsRequired();
+
+            entity.HasOne(x => x.User)
+                .WithMany(x => x.VitalMeasurements)
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(x => new
+            {
+                x.UserId,
+                x.MeasuredAt
+            });
+
+            entity.ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_VitalMeasurements_SystolicPressure",
+                    "\"SystolicPressure\" >= 1 AND \"SystolicPressure\" <= 300");
+
+                table.HasCheckConstraint(
+                    "CK_VitalMeasurements_DiastolicPressure",
+                    "\"DiastolicPressure\" >= 1 AND \"DiastolicPressure\" <= 200");
+
+                table.HasCheckConstraint(
+                    "CK_VitalMeasurements_Pulse",
+                    "\"Pulse\" >= 1 AND \"Pulse\" <= 300");
+            });
         });
     }
 }
