@@ -22,6 +22,34 @@ namespace MigraineDiary.Api.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("MigraineDiary.Api.Entities.AttackMedication", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Dosage")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("MedicationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("MigraineAttackId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("TakenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MedicationId");
+
+                    b.HasIndex("MigraineAttackId");
+
+                    b.ToTable("AttackMedications");
+                });
+
             modelBuilder.Entity("MigraineDiary.Api.Entities.AttackSymptom", b =>
                 {
                     b.Property<Guid>("MigraineAttackId")
@@ -58,6 +86,28 @@ namespace MigraineDiary.Api.Migrations
                     b.HasIndex("TriggerId");
 
                     b.ToTable("AttackTriggers");
+                });
+
+            modelBuilder.Entity("MigraineDiary.Api.Entities.Medication", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("Medications");
                 });
 
             modelBuilder.Entity("MigraineDiary.Api.Entities.MigraineAttack", b =>
@@ -259,6 +309,25 @@ namespace MigraineDiary.Api.Migrations
                     b.ToTable("Users");
                 });
 
+            modelBuilder.Entity("MigraineDiary.Api.Entities.AttackMedication", b =>
+                {
+                    b.HasOne("MigraineDiary.Api.Entities.Medication", "Medication")
+                        .WithMany("AttackMedications")
+                        .HasForeignKey("MedicationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MigraineDiary.Api.Entities.MigraineAttack", "MigraineAttack")
+                        .WithMany("Medications")
+                        .HasForeignKey("MigraineAttackId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Medication");
+
+                    b.Navigation("MigraineAttack");
+                });
+
             modelBuilder.Entity("MigraineDiary.Api.Entities.AttackSymptom", b =>
                 {
                     b.HasOne("MigraineDiary.Api.Entities.MigraineAttack", "MigraineAttack")
@@ -297,6 +366,17 @@ namespace MigraineDiary.Api.Migrations
                     b.Navigation("Trigger");
                 });
 
+            modelBuilder.Entity("MigraineDiary.Api.Entities.Medication", b =>
+                {
+                    b.HasOne("MigraineDiary.Api.Entities.User", "User")
+                        .WithMany("Medications")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("MigraineDiary.Api.Entities.MigraineAttack", b =>
                 {
                     b.HasOne("MigraineDiary.Api.Entities.User", "User")
@@ -308,8 +388,15 @@ namespace MigraineDiary.Api.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("MigraineDiary.Api.Entities.Medication", b =>
+                {
+                    b.Navigation("AttackMedications");
+                });
+
             modelBuilder.Entity("MigraineDiary.Api.Entities.MigraineAttack", b =>
                 {
+                    b.Navigation("Medications");
+
                     b.Navigation("Symptoms");
 
                     b.Navigation("Triggers");
@@ -327,6 +414,8 @@ namespace MigraineDiary.Api.Migrations
 
             modelBuilder.Entity("MigraineDiary.Api.Entities.User", b =>
                 {
+                    b.Navigation("Medications");
+
                     b.Navigation("MigraineAttacks");
                 });
 #pragma warning restore 612, 618

@@ -15,4 +15,7 @@ public sealed class User
 
     public ICollection<MigraineAttack> MigraineAttacks { get; set; }
     = new List<MigraineAttack>();
+
+    public ICollection<Medication> Medications { get; set; }
+    = new List<Medication>();
 }

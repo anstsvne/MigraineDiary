@@ -28,4 +28,7 @@ public sealed class UpdateMigraineAttackRequest
 
     public IReadOnlyCollection<AttackTriggerRequest> Triggers { get; init; }
     = Array.Empty<AttackTriggerRequest>();
+
+    public IReadOnlyCollection<AttackMedicationRequest> Medications { get; init; }
+    = Array.Empty<AttackMedicationRequest>();
 }

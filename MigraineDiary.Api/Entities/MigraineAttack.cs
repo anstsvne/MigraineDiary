@@ -30,4 +30,7 @@ public sealed class MigraineAttack
 
     public ICollection<AttackTrigger> Triggers { get; set; }
     = new List<AttackTrigger>();
+
+    public ICollection<AttackMedication> Medications { get; set; }
+    = new List<AttackMedication>();
 }

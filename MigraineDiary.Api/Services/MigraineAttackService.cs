@@ -39,6 +39,12 @@ public sealed class MigraineAttackService
                 request.Triggers,
                 cancellationToken);
 
+        var medications =
+            await ValidateAndNormalizeMedicationsAsync(
+                userId,
+                request.Medications,
+                cancellationToken);
+
         var attack = new MigraineAttack
         {
             UserId = userId,
@@ -76,6 +82,17 @@ public sealed class MigraineAttackService
                 {
                     TriggerId = trigger.Key,
                     Description = trigger.Value
+                });
+        }
+
+        foreach (var medication in medications)
+        {
+            attack.Medications.Add(
+                new AttackMedication
+                {
+                    MedicationId = medication.MedicationId,
+                    Dosage = medication.Dosage,
+                    TakenAt = medication.TakenAt
                 });
         }
 
@@ -134,6 +151,19 @@ public sealed class MigraineAttackService
                         Name = t.Trigger.Name,
                         Description = t.Description
                     })
+                    .ToList(),
+
+                Medications = x.Medications
+                    .OrderBy(m => m.TakenAt)
+                    .ThenBy(m => m.Medication.Name)
+                    .Select(m => new AttackMedicationResponse
+                    {
+                        Id = m.Id,
+                        MedicationId = m.MedicationId,
+                        Name = m.Medication.Name,
+                        Dosage = m.Dosage,
+                        TakenAt = m.TakenAt
+                    })
                     .ToList()
             })
             .ToListAsync(cancellationToken);
@@ -185,6 +215,19 @@ public sealed class MigraineAttackService
                         Name = t.Trigger.Name,
                         Description = t.Description
                     })
+                    .ToList(),
+
+                Medications = x.Medications
+                    .OrderBy(m => m.TakenAt)
+                    .ThenBy(m => m.Medication.Name)
+                    .Select(m => new AttackMedicationResponse
+                    {
+                        Id = m.Id,
+                        MedicationId = m.MedicationId,
+                        Name = m.Medication.Name,
+                        Dosage = m.Dosage,
+                        TakenAt = m.TakenAt
+                    })
                     .ToList()
             })
             .SingleOrDefaultAsync(cancellationToken);
@@ -227,6 +270,16 @@ public sealed class MigraineAttackService
         var requestedTriggers =
             await ValidateAndNormalizeTriggersAsync(
                 request.Triggers,
+                cancellationToken);
+
+        var requestedMedications =
+            await ValidateAndNormalizeMedicationsAsync(
+                userId,
+                request.Medications,
+                cancellationToken);
+
+        await using var transaction =
+            await _dbContext.Database.BeginTransactionAsync(
                 cancellationToken);
 
         attack.StartAt = startAt;
@@ -307,7 +360,29 @@ public sealed class MigraineAttackService
             }
         }
 
+        await _dbContext.AttackMedications
+            .Where(x =>
+                x.MigraineAttackId == attackId)
+            .ExecuteDeleteAsync(
+                cancellationToken);
+
+        foreach (var medication in requestedMedications)
+        {
+            _dbContext.AttackMedications.Add(
+                new AttackMedication
+                {
+                    Id = Guid.NewGuid(),
+                    MigraineAttackId = attackId,
+                    MedicationId = medication.MedicationId,
+                    Dosage = medication.Dosage,
+                    TakenAt = medication.TakenAt
+                });
+        }
+
         await _dbContext.SaveChangesAsync(
+            cancellationToken);
+
+        await transaction.CommitAsync(
             cancellationToken);
 
         return await GetByIdAsync(
@@ -428,4 +503,56 @@ public sealed class MigraineAttackService
                 ? null
                 : x.Description.Trim());
     }
+
+    private async Task<IReadOnlyList<NormalizedAttackMedication>>
+        ValidateAndNormalizeMedicationsAsync(
+            Guid userId,
+            IReadOnlyCollection<AttackMedicationRequest> medications,
+            CancellationToken cancellationToken)
+    {
+        if (medications.Count == 0)
+        {
+            return Array.Empty<NormalizedAttackMedication>();
+        }
+
+        if (medications.Any(x =>
+            x.MedicationId == Guid.Empty))
+        {
+            throw new ArgumentException(
+                "Идентификатор препарата не может быть пустым.");
+        }
+
+        var medicationIds = medications
+            .Select(x => x.MedicationId)
+            .Distinct()
+            .ToArray();
+
+        var existingIds = await _dbContext.Medications
+            .Where(x =>
+                x.UserId == userId &&
+                medicationIds.Contains(x.Id))
+            .Select(x => x.Id)
+            .ToListAsync(cancellationToken);
+
+        if (existingIds.Count != medicationIds.Length)
+        {
+            throw new ArgumentException(
+                "Один или несколько указанных препаратов не существуют.");
+        }
+
+        return medications
+            .Select(x =>
+                new NormalizedAttackMedication(
+                    x.MedicationId,
+                    string.IsNullOrWhiteSpace(x.Dosage)
+                        ? null
+                        : x.Dosage.Trim(),
+                    x.TakenAt?.ToUniversalTime()))
+            .ToList();
+    }
+
+    private sealed record NormalizedAttackMedication(
+        Guid MedicationId,
+        string? Dosage,
+        DateTimeOffset? TakenAt);
 }
