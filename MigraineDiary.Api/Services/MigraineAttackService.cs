@@ -109,11 +109,77 @@ public sealed class MigraineAttackService
 
     public async Task<IReadOnlyList<MigraineAttackResponse>> GetAllAsync(
         Guid userId,
+        MigraineAttackFilterRequest filter,
         CancellationToken cancellationToken = default)
     {
-        return await _dbContext.MigraineAttacks
+        ValidateFilters(filter);
+
+        var query = _dbContext.MigraineAttacks
             .AsNoTracking()
-            .Where(x => x.UserId == userId)
+            .Where(x => x.UserId == userId);
+
+        if (filter.From.HasValue)
+        {
+            var from = filter.From.Value.ToUniversalTime();
+
+            query = query.Where(x =>
+                x.StartAt >= from);
+        }
+
+        if (filter.To.HasValue)
+        {
+            var to = filter.To.Value.ToUniversalTime();
+
+            query = query.Where(x =>
+                x.StartAt <= to);
+        }
+
+        if (filter.MinIntensity.HasValue)
+        {
+            query = query.Where(x =>
+                x.Intensity >= filter.MinIntensity.Value);
+        }
+
+        if (filter.MaxIntensity.HasValue)
+        {
+            query = query.Where(x =>
+                x.Intensity <= filter.MaxIntensity.Value);
+        }
+
+        if (filter.PainLocation.HasValue)
+        {
+            query = query.Where(x =>
+                x.PainLocation == filter.PainLocation.Value);
+        }
+
+        if (filter.SymptomId.HasValue)
+        {
+            var symptomId = filter.SymptomId.Value;
+
+            query = query.Where(x =>
+                x.Symptoms.Any(s =>
+                    s.SymptomId == symptomId));
+        }
+
+        if (filter.TriggerId.HasValue)
+        {
+            var triggerId = filter.TriggerId.Value;
+
+            query = query.Where(x =>
+                x.Triggers.Any(t =>
+                    t.TriggerId == triggerId));
+        }
+
+        if (filter.MedicationId.HasValue)
+        {
+            var medicationId = filter.MedicationId.Value;
+
+            query = query.Where(x =>
+                x.Medications.Any(m =>
+                    m.MedicationId == medicationId));
+        }
+
+        return await query
             .OrderByDescending(x => x.StartAt)
             .Select(x => new MigraineAttackResponse
             {
@@ -414,6 +480,48 @@ public sealed class MigraineAttackService
             cancellationToken);
 
         return true;
+    }
+
+    private static void ValidateFilters(
+        MigraineAttackFilterRequest filter)
+    {
+        if (filter.From.HasValue &&
+            filter.To.HasValue &&
+            filter.To.Value < filter.From.Value)
+        {
+            throw new ArgumentException(
+                "Конец периода не может быть раньше начала периода.");
+        }
+
+        if (filter.MinIntensity.HasValue &&
+            filter.MaxIntensity.HasValue &&
+            filter.MaxIntensity.Value <
+            filter.MinIntensity.Value)
+        {
+            throw new ArgumentException(
+                "Максимальная интенсивность не может быть меньше минимальной.");
+        }
+
+        if (filter.SymptomId.HasValue &&
+            filter.SymptomId.Value == Guid.Empty)
+        {
+            throw new ArgumentException(
+                "Идентификатор симптома не может быть пустым.");
+        }
+
+        if (filter.TriggerId.HasValue &&
+            filter.TriggerId.Value == Guid.Empty)
+        {
+            throw new ArgumentException(
+                "Идентификатор триггера не может быть пустым.");
+        }
+
+        if (filter.MedicationId.HasValue &&
+            filter.MedicationId.Value == Guid.Empty)
+        {
+            throw new ArgumentException(
+                "Идентификатор препарата не может быть пустым.");
+        }
     }
 
     private async Task<Dictionary<Guid, string?>>

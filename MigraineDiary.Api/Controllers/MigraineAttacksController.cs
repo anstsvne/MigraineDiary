@@ -21,7 +21,8 @@ public sealed class MigraineAttacksController : ControllerBase
 
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<MigraineAttackResponse>>> GetAll(
-    CancellationToken cancellationToken)
+        [FromQuery] MigraineAttackFilterRequest filter,
+        CancellationToken cancellationToken)
     {
         var userIdValue = User.FindFirstValue(
             ClaimTypes.NameIdentifier);
@@ -33,18 +34,29 @@ public sealed class MigraineAttacksController : ControllerBase
             return Unauthorized();
         }
 
-        var result =
-            await _migraineAttackService.GetAllAsync(
-                userId,
-                cancellationToken);
+        try
+        {
+            var result =
+                await _migraineAttackService.GetAllAsync(
+                    userId,
+                    filter,
+                    cancellationToken);
 
-        return Ok(result);
+            return Ok(result);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new
+            {
+                message = exception.Message
+            });
+        }
     }
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<MigraineAttackResponse>> GetById(
-    Guid id,
-    CancellationToken cancellationToken)
+        Guid id,
+        CancellationToken cancellationToken)
     {
         var userIdValue = User.FindFirstValue(
             ClaimTypes.NameIdentifier);
@@ -105,11 +117,12 @@ public sealed class MigraineAttacksController : ControllerBase
             });
         }
     }
+
     [HttpPut("{id:guid}")]
     public async Task<ActionResult<MigraineAttackResponse>> Update(
-    Guid id,
-    UpdateMigraineAttackRequest request,
-    CancellationToken cancellationToken)
+        Guid id,
+        UpdateMigraineAttackRequest request,
+        CancellationToken cancellationToken)
     {
         var userIdValue = User.FindFirstValue(
             ClaimTypes.NameIdentifier);
@@ -145,10 +158,11 @@ public sealed class MigraineAttacksController : ControllerBase
             });
         }
     }
+
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(
-    Guid id,
-    CancellationToken cancellationToken)
+        Guid id,
+        CancellationToken cancellationToken)
     {
         var userIdValue = User.FindFirstValue(
             ClaimTypes.NameIdentifier);
