@@ -79,6 +79,7 @@ builder.Services.AddScoped<SymptomService>();
 builder.Services.AddScoped<TriggerService>();
 builder.Services.AddScoped<MedicationService>();
 builder.Services.AddScoped<VitalMeasurementService>();
+builder.Services.AddScoped<DataExportService>();
 
 builder.Services
     .AddControllers()
