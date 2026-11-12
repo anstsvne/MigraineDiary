@@ -53,6 +53,40 @@ public sealed class MigraineAttacksController : ControllerBase
         }
     }
 
+    [HttpGet("statistics")]
+    public async Task<ActionResult<MigraineAttackStatisticsResponse>> GetStatistics(
+    [FromQuery] MigraineAttackStatisticsRequest request,
+    CancellationToken cancellationToken)
+    {
+        var userIdValue = User.FindFirstValue(
+            ClaimTypes.NameIdentifier);
+
+        if (!Guid.TryParse(
+            userIdValue,
+            out var userId))
+        {
+            return Unauthorized();
+        }
+
+        try
+        {
+            var result =
+                await _migraineAttackService.GetStatisticsAsync(
+                    userId,
+                    request,
+                    cancellationToken);
+
+            return Ok(result);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new
+            {
+                message = exception.Message
+            });
+        }
+    }
+
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<MigraineAttackResponse>> GetById(
         Guid id,
