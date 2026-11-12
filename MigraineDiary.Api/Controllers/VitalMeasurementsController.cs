@@ -63,73 +63,53 @@ public sealed class VitalMeasurementsController : ControllerBase
 
     [HttpPost]
     public async Task<ActionResult<VitalMeasurementResponse>> Create(
-        CreateVitalMeasurementRequest request,
-        CancellationToken cancellationToken)
+    CreateVitalMeasurementRequest request,
+    CancellationToken cancellationToken)
     {
         if (!TryGetUserId(out var userId))
         {
             return Unauthorized();
         }
 
-        try
-        {
-            var measurement =
-                await _vitalMeasurementService.CreateAsync(
-                    userId,
-                    request,
-                    cancellationToken);
+        var measurement =
+            await _vitalMeasurementService.CreateAsync(
+                userId,
+                request,
+                cancellationToken);
 
-            return CreatedAtAction(
-                nameof(GetById),
-                new
-                {
-                    id = measurement.Id
-                },
-                measurement);
-        }
-        catch (ArgumentException exception)
-        {
-            return BadRequest(new
+        return CreatedAtAction(
+            nameof(GetById),
+            new
             {
-                message = exception.Message
-            });
-        }
+                id = measurement.Id
+            },
+            measurement);
     }
 
     [HttpPut("{id:guid}")]
     public async Task<ActionResult<VitalMeasurementResponse>> Update(
-        Guid id,
-        UpdateVitalMeasurementRequest request,
-        CancellationToken cancellationToken)
+    Guid id,
+    UpdateVitalMeasurementRequest request,
+    CancellationToken cancellationToken)
     {
         if (!TryGetUserId(out var userId))
         {
             return Unauthorized();
         }
 
-        try
-        {
-            var measurement =
-                await _vitalMeasurementService.UpdateAsync(
-                    userId,
-                    id,
-                    request,
-                    cancellationToken);
+        var measurement =
+            await _vitalMeasurementService.UpdateAsync(
+                userId,
+                id,
+                request,
+                cancellationToken);
 
-            if (measurement is null)
-            {
-                return NotFound();
-            }
-
-            return Ok(measurement);
-        }
-        catch (ArgumentException exception)
+        if (measurement is null)
         {
-            return BadRequest(new
-            {
-                message = exception.Message
-            });
+            return NotFound();
         }
+
+        return Ok(measurement);
     }
 
     [HttpDelete("{id:guid}")]

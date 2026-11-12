@@ -21,8 +21,8 @@ public sealed class MigraineAttacksController : ControllerBase
 
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<MigraineAttackResponse>>> GetAll(
-        [FromQuery] MigraineAttackFilterRequest filter,
-        CancellationToken cancellationToken)
+    [FromQuery] MigraineAttackFilterRequest filter,
+    CancellationToken cancellationToken)
     {
         var userIdValue = User.FindFirstValue(
             ClaimTypes.NameIdentifier);
@@ -34,23 +34,13 @@ public sealed class MigraineAttacksController : ControllerBase
             return Unauthorized();
         }
 
-        try
-        {
-            var result =
-                await _migraineAttackService.GetAllAsync(
-                    userId,
-                    filter,
-                    cancellationToken);
+        var result =
+            await _migraineAttackService.GetAllAsync(
+                userId,
+                filter,
+                cancellationToken);
 
-            return Ok(result);
-        }
-        catch (ArgumentException exception)
-        {
-            return BadRequest(new
-            {
-                message = exception.Message
-            });
-        }
+        return Ok(result);
     }
 
     [HttpGet("statistics")]
@@ -68,23 +58,13 @@ public sealed class MigraineAttacksController : ControllerBase
             return Unauthorized();
         }
 
-        try
-        {
-            var result =
-                await _migraineAttackService.GetStatisticsAsync(
-                    userId,
-                    request,
-                    cancellationToken);
+        var result =
+            await _migraineAttackService.GetStatisticsAsync(
+                userId,
+                request,
+                cancellationToken);
 
-            return Ok(result);
-        }
-        catch (ArgumentException exception)
-        {
-            return BadRequest(new
-            {
-                message = exception.Message
-            });
-        }
+        return Ok(result);
     }
 
     [HttpGet("{id:guid}")]
@@ -118,8 +98,8 @@ public sealed class MigraineAttacksController : ControllerBase
 
     [HttpPost]
     public async Task<ActionResult<MigraineAttackResponse>> Create(
-        CreateMigraineAttackRequest request,
-        CancellationToken cancellationToken)
+    CreateMigraineAttackRequest request,
+    CancellationToken cancellationToken)
     {
         var userIdValue = User.FindFirstValue(
             ClaimTypes.NameIdentifier);
@@ -131,32 +111,22 @@ public sealed class MigraineAttacksController : ControllerBase
             return Unauthorized();
         }
 
-        try
-        {
-            var result =
-                await _migraineAttackService.CreateAsync(
-                    userId,
-                    request,
-                    cancellationToken);
+        var result =
+            await _migraineAttackService.CreateAsync(
+                userId,
+                request,
+                cancellationToken);
 
-            return StatusCode(
-                StatusCodes.Status201Created,
-                result);
-        }
-        catch (ArgumentException exception)
-        {
-            return BadRequest(new
-            {
-                message = exception.Message
-            });
-        }
+        return StatusCode(
+            StatusCodes.Status201Created,
+            result);
     }
 
     [HttpPut("{id:guid}")]
     public async Task<ActionResult<MigraineAttackResponse>> Update(
-        Guid id,
-        UpdateMigraineAttackRequest request,
-        CancellationToken cancellationToken)
+    Guid id,
+    UpdateMigraineAttackRequest request,
+    CancellationToken cancellationToken)
     {
         var userIdValue = User.FindFirstValue(
             ClaimTypes.NameIdentifier);
@@ -168,29 +138,19 @@ public sealed class MigraineAttacksController : ControllerBase
             return Unauthorized();
         }
 
-        try
-        {
-            var result =
-                await _migraineAttackService.UpdateAsync(
-                    userId,
-                    id,
-                    request,
-                    cancellationToken);
+        var result =
+            await _migraineAttackService.UpdateAsync(
+                userId,
+                id,
+                request,
+                cancellationToken);
 
-            if (result is null)
-            {
-                return NotFound();
-            }
-
-            return Ok(result);
-        }
-        catch (ArgumentException exception)
+        if (result is null)
         {
-            return BadRequest(new
-            {
-                message = exception.Message
-            });
+            return NotFound();
         }
+
+        return Ok(result);
     }
 
     [HttpDelete("{id:guid}")]

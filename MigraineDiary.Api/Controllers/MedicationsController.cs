@@ -43,8 +43,8 @@ public sealed class MedicationsController : ControllerBase
 
     [HttpPost]
     public async Task<ActionResult<MedicationResponse>> Create(
-        CreateMedicationRequest request,
-        CancellationToken cancellationToken)
+    CreateMedicationRequest request,
+    CancellationToken cancellationToken)
     {
         var userIdValue = User.FindFirstValue(
             ClaimTypes.NameIdentifier);
@@ -56,31 +56,14 @@ public sealed class MedicationsController : ControllerBase
             return Unauthorized();
         }
 
-        try
-        {
-            var result =
-                await _medicationService.CreateAsync(
-                    userId,
-                    request,
-                    cancellationToken);
+        var result =
+            await _medicationService.CreateAsync(
+                userId,
+                request,
+                cancellationToken);
 
-            return StatusCode(
-                StatusCodes.Status201Created,
-                result);
-        }
-        catch (ArgumentException exception)
-        {
-            return BadRequest(new
-            {
-                message = exception.Message
-            });
-        }
-        catch (InvalidOperationException exception)
-        {
-            return Conflict(new
-            {
-                message = exception.Message
-            });
-        }
+        return StatusCode(
+            StatusCodes.Status201Created,
+            result);
     }
 }
