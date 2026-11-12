@@ -235,6 +235,126 @@ public sealed class MigraineAttackService
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<MigraineAttackStatisticsResponse> GetStatisticsAsync(
+    Guid userId,
+    MigraineAttackStatisticsRequest request,
+    CancellationToken cancellationToken = default)
+    {
+        ValidateStatisticsPeriod(request);
+
+        var query = _dbContext.MigraineAttacks
+            .AsNoTracking()
+            .Where(x => x.UserId == userId);
+
+        if (request.From.HasValue)
+        {
+            var from = request.From.Value.ToUniversalTime();
+
+            query = query.Where(x =>
+                x.StartAt >= from);
+        }
+
+        if (request.To.HasValue)
+        {
+            var to = request.To.Value.ToUniversalTime();
+
+            query = query.Where(x =>
+                x.StartAt <= to);
+        }
+
+        var attacks = await query
+            .Select(x => new
+            {
+                x.Intensity,
+                x.StartAt,
+                x.EndAt
+            })
+            .ToListAsync(cancellationToken);
+
+        if (attacks.Count == 0)
+        {
+            return new MigraineAttackStatisticsResponse
+            {
+                AttackCount = 0,
+                AverageIntensity = 0,
+                AverageDurationMinutes = 0
+            };
+        }
+
+        var symptoms = await query
+            .SelectMany(x => x.Symptoms)
+            .GroupBy(x => new
+            {
+                x.SymptomId,
+                x.Symptom.Name
+            })
+            .Select(group => new StatisticsItemResponse
+            {
+                Id = group.Key.SymptomId,
+                Name = group.Key.Name,
+                Count = group.Count()
+            })
+            .OrderByDescending(x => x.Count)
+            .ThenBy(x => x.Name)
+            .ToListAsync(cancellationToken);
+
+        var triggers = await query
+            .SelectMany(x => x.Triggers)
+            .GroupBy(x => new
+            {
+                x.TriggerId,
+                x.Trigger.Name
+            })
+            .Select(group => new StatisticsItemResponse
+            {
+                Id = group.Key.TriggerId,
+                Name = group.Key.Name,
+                Count = group.Count()
+            })
+            .OrderByDescending(x => x.Count)
+            .ThenBy(x => x.Name)
+            .ToListAsync(cancellationToken);
+
+        var medications = await query
+            .SelectMany(x => x.Medications)
+            .GroupBy(x => new
+            {
+                x.MedicationId,
+                x.Medication.Name
+            })
+            .Select(group => new StatisticsItemResponse
+            {
+                Id = group.Key.MedicationId,
+                Name = group.Key.Name,
+
+                Count = group
+                    .Select(x => x.MigraineAttackId)
+                    .Distinct()
+                    .Count()
+            })
+            .OrderByDescending(x => x.Count)
+            .ThenBy(x => x.Name)
+            .ToListAsync(cancellationToken);
+
+        return new MigraineAttackStatisticsResponse
+        {
+            AttackCount = attacks.Count,
+
+            AverageIntensity = Math.Round(
+                attacks.Average(x => x.Intensity),
+                2),
+
+            AverageDurationMinutes = Math.Round(
+                attacks.Average(x =>
+                    (x.EndAt - x.StartAt).TotalMinutes),
+                2),
+
+            Symptoms = symptoms,
+            Triggers = triggers,
+            Medications = medications
+        };
+    }
+
     public async Task<MigraineAttackResponse?> GetByIdAsync(
         Guid userId,
         Guid attackId,
@@ -480,6 +600,18 @@ public sealed class MigraineAttackService
             cancellationToken);
 
         return true;
+    }
+
+    private static void ValidateStatisticsPeriod(
+        MigraineAttackStatisticsRequest request)
+    {
+        if (request.From.HasValue &&
+            request.To.HasValue &&
+            request.To.Value < request.From.Value)
+        {
+            throw new ArgumentException(
+                "Конец периода не может быть раньше начала периода.");
+        }
     }
 
     private static void ValidateFilters(
