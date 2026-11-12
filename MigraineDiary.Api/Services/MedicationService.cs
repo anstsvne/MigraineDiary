@@ -2,6 +2,7 @@ using MigraineDiary.Api.Contracts.Medications;
 using MigraineDiary.Api.Data;
 using MigraineDiary.Api.Entities;
 using Microsoft.EntityFrameworkCore;
+using MigraineDiary.Api.Exceptions;
 
 namespace MigraineDiary.Api.Services;
 
@@ -53,8 +54,8 @@ public sealed class MedicationService
 
         if (alreadyExists)
         {
-            throw new InvalidOperationException(
-                "ѕрепарат с таким названием уже существует.");
+            throw new ConflictException(
+                 "ѕрепарат с таким названием уже существует.");
         }
 
         var medication = new Medication

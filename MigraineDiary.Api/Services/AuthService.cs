@@ -4,6 +4,7 @@ using MigraineDiary.Api.Auth;
 using MigraineDiary.Api.Contracts.Auth;
 using MigraineDiary.Api.Data;
 using MigraineDiary.Api.Entities;
+using MigraineDiary.Api.Exceptions;
 
 namespace MigraineDiary.Api.Services;
 
@@ -39,7 +40,7 @@ public sealed class AuthService
 
         if (emailExists)
         {
-            throw new InvalidOperationException(
+            throw new ConflictException(
                 "Пользователь с таким email уже существует.");
         }
 

@@ -19,25 +19,15 @@ public sealed class AuthController : ControllerBase
 
     [HttpPost("register")]
     public async Task<ActionResult<RegisterResponse>> Register(
-        RegisterRequest request,
-        CancellationToken cancellationToken)
+    RegisterRequest request,
+    CancellationToken cancellationToken)
     {
-        try
-        {
-            var result =
-                await _authService.RegisterAsync(
-                    request,
-                    cancellationToken);
+        var result =
+            await _authService.RegisterAsync(
+                request,
+                cancellationToken);
 
-            return Ok(result);
-        }
-        catch (InvalidOperationException exception)
-        {
-            return Conflict(new
-            {
-                message = exception.Message
-            });
-        }
+        return Ok(result);
     }
 
     [HttpPost("login")]

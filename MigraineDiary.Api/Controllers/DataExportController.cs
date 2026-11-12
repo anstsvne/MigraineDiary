@@ -21,8 +21,8 @@ public sealed class DataExportController : ControllerBase
 
     [HttpGet]
     public async Task<IActionResult> Export(
-        [FromQuery] DataExportRequest request,
-        CancellationToken cancellationToken)
+     [FromQuery] DataExportRequest request,
+     CancellationToken cancellationToken)
     {
         var userIdValue = User.FindFirstValue(
             ClaimTypes.NameIdentifier);
@@ -34,29 +34,19 @@ public sealed class DataExportController : ControllerBase
             return Unauthorized();
         }
 
-        try
-        {
-            var content =
-                await _dataExportService.ExportAsync(
-                    userId,
-                    request,
-                    cancellationToken);
+        var content =
+            await _dataExportService.ExportAsync(
+                userId,
+                request,
+                cancellationToken);
 
-            var fileName =
-                $"migraine-diary-export-" +
-                $"{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.zip";
+        var fileName =
+            $"migraine-diary-export-" +
+            $"{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.zip";
 
-            return File(
-                content,
-                "application/zip",
-                fileName);
-        }
-        catch (ArgumentException exception)
-        {
-            return BadRequest(new
-            {
-                message = exception.Message
-            });
-        }
+        return File(
+            content,
+            "application/zip",
+            fileName);
     }
 }
