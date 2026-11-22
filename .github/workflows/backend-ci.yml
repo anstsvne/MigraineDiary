@@ -1,0 +1,38 @@
+name: Backend CI
+
+on:
+  push:
+    branches:
+      - develop
+
+  pull_request:
+    branches:
+      - develop
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore MigraineDiary.sln
+
+      - name: Build
+        run: dotnet build MigraineDiary.sln --configuration Release --no-restore
+
+      - name: Run integration tests
+        run: dotnet test MigraineDiary.Api.Tests/MigraineDiary.Api.Tests.csproj --configuration Release --no-build --verbosity normal
