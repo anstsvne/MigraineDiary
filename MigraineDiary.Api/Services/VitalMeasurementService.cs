@@ -1,3 +1,4 @@
+using MigraineDiary.Api.Contracts.Common;
 using MigraineDiary.Api.Contracts.VitalMeasurements;
 using MigraineDiary.Api.Data;
 using MigraineDiary.Api.Entities;
@@ -15,25 +16,87 @@ public sealed class VitalMeasurementService
         _dbContext = dbContext;
     }
 
-    public async Task<IReadOnlyCollection<VitalMeasurementResponse>> GetAllAsync(
-        Guid userId,
-        CancellationToken cancellationToken = default)
+    public async Task<PagedResponse<VitalMeasurementResponse>>
+        GetAllAsync(
+            Guid userId,
+            PaginationRequest pagination,
+            CancellationToken cancellationToken = default)
     {
-        return await _dbContext.VitalMeasurements
-            .AsNoTracking()
-            .Where(x => x.UserId == userId)
-            .OrderByDescending(x => x.MeasuredAt)
-            .Select(x => new VitalMeasurementResponse
-            {
-                Id = x.Id,
-                SystolicPressure = x.SystolicPressure,
-                DiastolicPressure = x.DiastolicPressure,
-                Pulse = x.Pulse,
-                MeasuredAt = x.MeasuredAt,
-                Notes = x.Notes,
-                CreatedAt = x.CreatedAt
-            })
-            .ToListAsync(cancellationToken);
+        var query =
+            _dbContext.VitalMeasurements
+                .AsNoTracking()
+                .Where(x =>
+                    x.UserId == userId);
+
+        var totalCount =
+            await query.CountAsync(
+                cancellationToken);
+
+        var skip =
+            ((long)pagination.Page - 1) *
+            pagination.PageSize;
+
+        IReadOnlyList<VitalMeasurementResponse> items;
+
+        if (skip >= totalCount)
+        {
+            items =
+                Array.Empty<VitalMeasurementResponse>();
+        }
+        else
+        {
+            items =
+                await query
+                    .OrderByDescending(
+                        x => x.MeasuredAt)
+                    .ThenBy(
+                        x => x.Id)
+                    .Skip(
+                        (int)skip)
+                    .Take(
+                        pagination.PageSize)
+                    .Select(x =>
+                        new VitalMeasurementResponse
+                        {
+                            Id = x.Id,
+
+                            SystolicPressure =
+                                x.SystolicPressure,
+
+                            DiastolicPressure =
+                                x.DiastolicPressure,
+
+                            Pulse =
+                                x.Pulse,
+
+                            MeasuredAt =
+                                x.MeasuredAt,
+
+                            Notes =
+                                x.Notes,
+
+                            CreatedAt =
+                                x.CreatedAt
+                        })
+                    .ToListAsync(
+                        cancellationToken);
+        }
+
+        var totalPages =
+            totalCount == 0
+                ? 0
+                : (int)Math.Ceiling(
+                    totalCount /
+                    (double)pagination.PageSize);
+
+        return new PagedResponse<VitalMeasurementResponse>
+        {
+            Items = items,
+            Page = pagination.Page,
+            PageSize = pagination.PageSize,
+            TotalCount = totalCount,
+            TotalPages = totalPages
+        };
     }
 
     public async Task<VitalMeasurementResponse?> GetByIdAsync(
@@ -46,17 +109,21 @@ public sealed class VitalMeasurementService
             .Where(x =>
                 x.Id == measurementId &&
                 x.UserId == userId)
-            .Select(x => new VitalMeasurementResponse
-            {
-                Id = x.Id,
-                SystolicPressure = x.SystolicPressure,
-                DiastolicPressure = x.DiastolicPressure,
-                Pulse = x.Pulse,
-                MeasuredAt = x.MeasuredAt,
-                Notes = x.Notes,
-                CreatedAt = x.CreatedAt
-            })
-            .SingleOrDefaultAsync(cancellationToken);
+            .Select(x =>
+                new VitalMeasurementResponse
+                {
+                    Id = x.Id,
+                    SystolicPressure =
+                        x.SystolicPressure,
+                    DiastolicPressure =
+                        x.DiastolicPressure,
+                    Pulse = x.Pulse,
+                    MeasuredAt = x.MeasuredAt,
+                    Notes = x.Notes,
+                    CreatedAt = x.CreatedAt
+                })
+            .SingleOrDefaultAsync(
+                cancellationToken);
     }
 
     public async Task<VitalMeasurementResponse> CreateAsync(
@@ -70,21 +137,37 @@ public sealed class VitalMeasurementService
                 "Measurement date and time are required.");
         }
 
-        var measurement = new VitalMeasurement
-        {
-            UserId = userId,
-            SystolicPressure = request.SystolicPressure,
-            DiastolicPressure = request.DiastolicPressure,
-            Pulse = request.Pulse,
-            MeasuredAt = request.MeasuredAt.Value.ToUniversalTime(),
-            Notes = NormalizeNotes(request.Notes)
-        };
+        var measurement =
+            new VitalMeasurement
+            {
+                UserId = userId,
 
-        _dbContext.VitalMeasurements.Add(measurement);
+                SystolicPressure =
+                    request.SystolicPressure,
 
-        await _dbContext.SaveChangesAsync(cancellationToken);
+                DiastolicPressure =
+                    request.DiastolicPressure,
 
-        return MapToResponse(measurement);
+                Pulse =
+                    request.Pulse,
+
+                MeasuredAt =
+                    request.MeasuredAt.Value
+                        .ToUniversalTime(),
+
+                Notes =
+                    NormalizeNotes(
+                        request.Notes)
+            };
+
+        _dbContext.VitalMeasurements.Add(
+            measurement);
+
+        await _dbContext.SaveChangesAsync(
+            cancellationToken);
+
+        return MapToResponse(
+            measurement);
     }
 
     public async Task<VitalMeasurementResponse?> UpdateAsync(
@@ -99,12 +182,13 @@ public sealed class VitalMeasurementService
                 "Measurement date and time are required.");
         }
 
-        var measurement = await _dbContext.VitalMeasurements
-            .SingleOrDefaultAsync(
-                x =>
-                    x.Id == measurementId &&
-                    x.UserId == userId,
-                cancellationToken);
+        var measurement =
+            await _dbContext.VitalMeasurements
+                .SingleOrDefaultAsync(
+                    x =>
+                        x.Id == measurementId &&
+                        x.UserId == userId,
+                    cancellationToken);
 
         if (measurement is null)
         {
@@ -121,14 +205,18 @@ public sealed class VitalMeasurementService
             request.Pulse;
 
         measurement.MeasuredAt =
-            request.MeasuredAt.Value.ToUniversalTime();
+            request.MeasuredAt.Value
+                .ToUniversalTime();
 
         measurement.Notes =
-            NormalizeNotes(request.Notes);
+            NormalizeNotes(
+                request.Notes);
 
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        await _dbContext.SaveChangesAsync(
+            cancellationToken);
 
-        return MapToResponse(measurement);
+        return MapToResponse(
+            measurement);
     }
 
     public async Task<bool> DeleteAsync(
@@ -136,21 +224,24 @@ public sealed class VitalMeasurementService
         Guid measurementId,
         CancellationToken cancellationToken = default)
     {
-        var measurement = await _dbContext.VitalMeasurements
-            .SingleOrDefaultAsync(
-                x =>
-                    x.Id == measurementId &&
-                    x.UserId == userId,
-                cancellationToken);
+        var measurement =
+            await _dbContext.VitalMeasurements
+                .SingleOrDefaultAsync(
+                    x =>
+                        x.Id == measurementId &&
+                        x.UserId == userId,
+                    cancellationToken);
 
         if (measurement is null)
         {
             return false;
         }
 
-        _dbContext.VitalMeasurements.Remove(measurement);
+        _dbContext.VitalMeasurements.Remove(
+            measurement);
 
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        await _dbContext.SaveChangesAsync(
+            cancellationToken);
 
         return true;
     }
@@ -160,20 +251,34 @@ public sealed class VitalMeasurementService
     {
         return new VitalMeasurementResponse
         {
-            Id = measurement.Id,
-            SystolicPressure = measurement.SystolicPressure,
-            DiastolicPressure = measurement.DiastolicPressure,
-            Pulse = measurement.Pulse,
-            MeasuredAt = measurement.MeasuredAt,
-            Notes = measurement.Notes,
-            CreatedAt = measurement.CreatedAt
+            Id =
+                measurement.Id,
+
+            SystolicPressure =
+                measurement.SystolicPressure,
+
+            DiastolicPressure =
+                measurement.DiastolicPressure,
+
+            Pulse =
+                measurement.Pulse,
+
+            MeasuredAt =
+                measurement.MeasuredAt,
+
+            Notes =
+                measurement.Notes,
+
+            CreatedAt =
+                measurement.CreatedAt
         };
     }
 
     private static string? NormalizeNotes(
         string? notes)
     {
-        if (string.IsNullOrWhiteSpace(notes))
+        if (string.IsNullOrWhiteSpace(
+            notes))
         {
             return null;
         }

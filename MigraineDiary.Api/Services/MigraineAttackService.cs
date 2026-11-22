@@ -1,4 +1,5 @@
-﻿using MigraineDiary.Api.Contracts.MigraineAttacks;
+﻿using MigraineDiary.Api.Contracts.Common;
+using MigraineDiary.Api.Contracts.MigraineAttacks;
 using MigraineDiary.Api.Data;
 using MigraineDiary.Api.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -20,8 +21,11 @@ public sealed class MigraineAttackService
         CreateMigraineAttackRequest request,
         CancellationToken cancellationToken = default)
     {
-        var startAt = request.StartAt!.Value.ToUniversalTime();
-        var endAt = request.EndAt!.Value.ToUniversalTime();
+        var startAt =
+            request.StartAt!.Value.ToUniversalTime();
+
+        var endAt =
+            request.EndAt!.Value.ToUniversalTime();
 
         if (endAt < startAt)
         {
@@ -60,7 +64,8 @@ public sealed class MigraineAttackService
                     : request.PainLocationDescription.Trim(),
 
             Notes =
-                string.IsNullOrWhiteSpace(request.Notes)
+                string.IsNullOrWhiteSpace(
+                    request.Notes)
                     ? null
                     : request.Notes.Trim()
         };
@@ -90,13 +95,19 @@ public sealed class MigraineAttackService
             attack.Medications.Add(
                 new AttackMedication
                 {
-                    MedicationId = medication.MedicationId,
-                    Dosage = medication.Dosage,
-                    TakenAt = medication.TakenAt
+                    MedicationId =
+                        medication.MedicationId,
+
+                    Dosage =
+                        medication.Dosage,
+
+                    TakenAt =
+                        medication.TakenAt
                 });
         }
 
-        _dbContext.MigraineAttacks.Add(attack);
+        _dbContext.MigraineAttacks.Add(
+            attack);
 
         await _dbContext.SaveChangesAsync(
             cancellationToken);
@@ -107,21 +118,26 @@ public sealed class MigraineAttackService
             cancellationToken))!;
     }
 
-    public async Task<IReadOnlyList<MigraineAttackResponse>> GetAllAsync(
-        Guid userId,
-        MigraineAttackFilterRequest filter,
-        CancellationToken cancellationToken = default)
+    public async Task<PagedResponse<MigraineAttackResponse>>
+        GetAllAsync(
+            Guid userId,
+            MigraineAttackFilterRequest filter,
+            CancellationToken cancellationToken = default)
     {
         ValidateFilters(filter);
 
-        var query = _dbContext.MigraineAttacks
-            .AsNoTracking()
-            .AsSplitQuery()
-            .Where(x => x.UserId == userId);
+        var query =
+            _dbContext.MigraineAttacks
+                .AsNoTracking()
+                .AsSplitQuery()
+                .Where(x =>
+                    x.UserId == userId);
 
         if (filter.From.HasValue)
         {
-            var from = filter.From.Value.ToUniversalTime();
+            var from =
+                filter.From.Value
+                    .ToUniversalTime();
 
             query = query.Where(x =>
                 x.StartAt >= from);
@@ -129,7 +145,9 @@ public sealed class MigraineAttackService
 
         if (filter.To.HasValue)
         {
-            var to = filter.To.Value.ToUniversalTime();
+            var to =
+                filter.To.Value
+                    .ToUniversalTime();
 
             query = query.Where(x =>
                 x.StartAt <= to);
@@ -138,118 +156,218 @@ public sealed class MigraineAttackService
         if (filter.MinIntensity.HasValue)
         {
             query = query.Where(x =>
-                x.Intensity >= filter.MinIntensity.Value);
+                x.Intensity >=
+                filter.MinIntensity.Value);
         }
 
         if (filter.MaxIntensity.HasValue)
         {
             query = query.Where(x =>
-                x.Intensity <= filter.MaxIntensity.Value);
+                x.Intensity <=
+                filter.MaxIntensity.Value);
         }
 
         if (filter.PainLocation.HasValue)
         {
             query = query.Where(x =>
-                x.PainLocation == filter.PainLocation.Value);
+                x.PainLocation ==
+                filter.PainLocation.Value);
         }
 
         if (filter.SymptomId.HasValue)
         {
-            var symptomId = filter.SymptomId.Value;
+            var symptomId =
+                filter.SymptomId.Value;
 
             query = query.Where(x =>
                 x.Symptoms.Any(s =>
-                    s.SymptomId == symptomId));
+                    s.SymptomId ==
+                    symptomId));
         }
 
         if (filter.TriggerId.HasValue)
         {
-            var triggerId = filter.TriggerId.Value;
+            var triggerId =
+                filter.TriggerId.Value;
 
             query = query.Where(x =>
                 x.Triggers.Any(t =>
-                    t.TriggerId == triggerId));
+                    t.TriggerId ==
+                    triggerId));
         }
 
         if (filter.MedicationId.HasValue)
         {
-            var medicationId = filter.MedicationId.Value;
+            var medicationId =
+                filter.MedicationId.Value;
 
             query = query.Where(x =>
                 x.Medications.Any(m =>
-                    m.MedicationId == medicationId));
+                    m.MedicationId ==
+                    medicationId));
         }
 
-        return await query
-            .OrderByDescending(x => x.StartAt)
-            .Select(x => new MigraineAttackResponse
-            {
-                Id = x.Id,
-                StartAt = x.StartAt,
-                EndAt = x.EndAt,
+        var totalCount =
+            await query.CountAsync(
+                cancellationToken);
 
-                DurationMinutes =
-                    (x.EndAt - x.StartAt).TotalMinutes,
+        var skip =
+            ((long)filter.Page - 1) *
+            filter.PageSize;
 
-                Intensity = x.Intensity,
-                PainLocation = x.PainLocation,
+        IReadOnlyList<MigraineAttackResponse> items;
 
-                PainLocationDescription =
-                    x.PainLocationDescription,
+        if (skip >= totalCount)
+        {
+            items =
+                Array.Empty<MigraineAttackResponse>();
+        }
+        else
+        {
+            items =
+                await query
+                    .OrderByDescending(
+                        x => x.StartAt)
+                    .ThenBy(
+                        x => x.Id)
+                    .Skip(
+                        (int)skip)
+                    .Take(
+                        filter.PageSize)
+                    .Select(x =>
+                        new MigraineAttackResponse
+                        {
+                            Id = x.Id,
 
-                Notes = x.Notes,
-                CreatedAt = x.CreatedAt,
+                            StartAt =
+                                x.StartAt,
 
-                Symptoms = x.Symptoms
-                    .OrderBy(s => s.Symptom.Name)
-                    .Select(s => new AttackSymptomResponse
-                    {
-                        SymptomId = s.SymptomId,
-                        Name = s.Symptom.Name,
-                        Description = s.Description
-                    })
-                    .ToList(),
+                            EndAt =
+                                x.EndAt,
 
-                Triggers = x.Triggers
-                    .OrderBy(t => t.Trigger.Name)
-                    .Select(t => new AttackTriggerResponse
-                    {
-                        TriggerId = t.TriggerId,
-                        Name = t.Trigger.Name,
-                        Description = t.Description
-                    })
-                    .ToList(),
+                            DurationMinutes =
+                                (x.EndAt -
+                                 x.StartAt)
+                                .TotalMinutes,
 
-                Medications = x.Medications
-                    .OrderBy(m => m.TakenAt)
-                    .ThenBy(m => m.Medication.Name)
-                    .Select(m => new AttackMedicationResponse
-                    {
-                        Id = m.Id,
-                        MedicationId = m.MedicationId,
-                        Name = m.Medication.Name,
-                        Dosage = m.Dosage,
-                        TakenAt = m.TakenAt
-                    })
-                    .ToList()
-            })
-            .ToListAsync(cancellationToken);
+                            Intensity =
+                                x.Intensity,
+
+                            PainLocation =
+                                x.PainLocation,
+
+                            PainLocationDescription =
+                                x.PainLocationDescription,
+
+                            Notes =
+                                x.Notes,
+
+                            CreatedAt =
+                                x.CreatedAt,
+
+                            Symptoms =
+                                x.Symptoms
+                                    .OrderBy(s =>
+                                        s.Symptom.Name)
+                                    .Select(s =>
+                                        new AttackSymptomResponse
+                                        {
+                                            SymptomId =
+                                                s.SymptomId,
+
+                                            Name =
+                                                s.Symptom.Name,
+
+                                            Description =
+                                                s.Description
+                                        })
+                                    .ToList(),
+
+                            Triggers =
+                                x.Triggers
+                                    .OrderBy(t =>
+                                        t.Trigger.Name)
+                                    .Select(t =>
+                                        new AttackTriggerResponse
+                                        {
+                                            TriggerId =
+                                                t.TriggerId,
+
+                                            Name =
+                                                t.Trigger.Name,
+
+                                            Description =
+                                                t.Description
+                                        })
+                                    .ToList(),
+
+                            Medications =
+                                x.Medications
+                                    .OrderBy(m =>
+                                        m.TakenAt)
+                                    .ThenBy(m =>
+                                        m.Medication.Name)
+                                    .Select(m =>
+                                        new AttackMedicationResponse
+                                        {
+                                            Id =
+                                                m.Id,
+
+                                            MedicationId =
+                                                m.MedicationId,
+
+                                            Name =
+                                                m.Medication.Name,
+
+                                            Dosage =
+                                                m.Dosage,
+
+                                            TakenAt =
+                                                m.TakenAt
+                                        })
+                                    .ToList()
+                        })
+                    .ToListAsync(
+                        cancellationToken);
+        }
+
+        var totalPages =
+            totalCount == 0
+                ? 0
+                : (int)Math.Ceiling(
+                    totalCount /
+                    (double)filter.PageSize);
+
+        return new PagedResponse<MigraineAttackResponse>
+        {
+            Items = items,
+            Page = filter.Page,
+            PageSize = filter.PageSize,
+            TotalCount = totalCount,
+            TotalPages = totalPages
+        };
     }
 
-    public async Task<MigraineAttackStatisticsResponse> GetStatisticsAsync(
-    Guid userId,
-    MigraineAttackStatisticsRequest request,
-    CancellationToken cancellationToken = default)
+    public async Task<MigraineAttackStatisticsResponse>
+        GetStatisticsAsync(
+            Guid userId,
+            MigraineAttackStatisticsRequest request,
+            CancellationToken cancellationToken = default)
     {
-        ValidateStatisticsPeriod(request);
+        ValidateStatisticsPeriod(
+            request);
 
-        var query = _dbContext.MigraineAttacks
-            .AsNoTracking()
-            .Where(x => x.UserId == userId);
+        var query =
+            _dbContext.MigraineAttacks
+                .AsNoTracking()
+                .Where(x =>
+                    x.UserId == userId);
 
         if (request.From.HasValue)
         {
-            var from = request.From.Value.ToUniversalTime();
+            var from =
+                request.From.Value
+                    .ToUniversalTime();
 
             query = query.Where(x =>
                 x.StartAt >= from);
@@ -257,193 +375,300 @@ public sealed class MigraineAttackService
 
         if (request.To.HasValue)
         {
-            var to = request.To.Value.ToUniversalTime();
+            var to =
+                request.To.Value
+                    .ToUniversalTime();
 
             query = query.Where(x =>
                 x.StartAt <= to);
         }
 
-        var attacks = await query
-            .Select(x => new
-            {
-                x.Intensity,
-                x.StartAt,
-                x.EndAt
-            })
-            .ToListAsync(cancellationToken);
+        var attacks =
+            await query
+                .Select(x =>
+                    new
+                    {
+                        x.Intensity,
+                        x.StartAt,
+                        x.EndAt
+                    })
+                .ToListAsync(
+                    cancellationToken);
 
         if (attacks.Count == 0)
         {
-            return new MigraineAttackStatisticsResponse
-            {
-                AttackCount = 0,
-                AverageIntensity = 0,
-                AverageDurationMinutes = 0
-            };
+            return
+                new MigraineAttackStatisticsResponse
+                {
+                    AttackCount = 0,
+                    AverageIntensity = 0,
+                    AverageDurationMinutes = 0
+                };
         }
 
-        var symptoms = await query
-            .SelectMany(x => x.Symptoms)
-            .GroupBy(x => new
-            {
-                x.SymptomId,
-                x.Symptom.Name
-            })
-            .Select(group => new StatisticsItemResponse
-            {
-                Id = group.Key.SymptomId,
-                Name = group.Key.Name,
-                Count = group.Count()
-            })
-            .OrderByDescending(x => x.Count)
-            .ThenBy(x => x.Name)
-            .ToListAsync(cancellationToken);
+        var symptoms =
+            await query
+                .SelectMany(x =>
+                    x.Symptoms)
+                .GroupBy(x =>
+                    new
+                    {
+                        x.SymptomId,
+                        x.Symptom.Name
+                    })
+                .Select(group =>
+                    new StatisticsItemResponse
+                    {
+                        Id =
+                            group.Key.SymptomId,
 
-        var triggers = await query
-            .SelectMany(x => x.Triggers)
-            .GroupBy(x => new
-            {
-                x.TriggerId,
-                x.Trigger.Name
-            })
-            .Select(group => new StatisticsItemResponse
-            {
-                Id = group.Key.TriggerId,
-                Name = group.Key.Name,
-                Count = group.Count()
-            })
-            .OrderByDescending(x => x.Count)
-            .ThenBy(x => x.Name)
-            .ToListAsync(cancellationToken);
+                        Name =
+                            group.Key.Name,
 
-        var medications = await query
-            .SelectMany(x => x.Medications)
-            .GroupBy(x => new
-            {
-                x.MedicationId,
-                x.Medication.Name
-            })
-            .Select(group => new StatisticsItemResponse
-            {
-                Id = group.Key.MedicationId,
-                Name = group.Key.Name,
+                        Count =
+                            group.Count()
+                    })
+                .OrderByDescending(x =>
+                    x.Count)
+                .ThenBy(x =>
+                    x.Name)
+                .ToListAsync(
+                    cancellationToken);
 
-                Count = group
-                    .Select(x => x.MigraineAttackId)
-                    .Distinct()
-                    .Count()
-            })
-            .OrderByDescending(x => x.Count)
-            .ThenBy(x => x.Name)
-            .ToListAsync(cancellationToken);
+        var triggers =
+            await query
+                .SelectMany(x =>
+                    x.Triggers)
+                .GroupBy(x =>
+                    new
+                    {
+                        x.TriggerId,
+                        x.Trigger.Name
+                    })
+                .Select(group =>
+                    new StatisticsItemResponse
+                    {
+                        Id =
+                            group.Key.TriggerId,
+
+                        Name =
+                            group.Key.Name,
+
+                        Count =
+                            group.Count()
+                    })
+                .OrderByDescending(x =>
+                    x.Count)
+                .ThenBy(x =>
+                    x.Name)
+                .ToListAsync(
+                    cancellationToken);
+
+        var medications =
+            await query
+                .SelectMany(x =>
+                    x.Medications)
+                .GroupBy(x =>
+                    new
+                    {
+                        x.MedicationId,
+                        x.Medication.Name
+                    })
+                .Select(group =>
+                    new StatisticsItemResponse
+                    {
+                        Id =
+                            group.Key.MedicationId,
+
+                        Name =
+                            group.Key.Name,
+
+                        Count =
+                            group
+                                .Select(x =>
+                                    x.MigraineAttackId)
+                                .Distinct()
+                                .Count()
+                    })
+                .OrderByDescending(x =>
+                    x.Count)
+                .ThenBy(x =>
+                    x.Name)
+                .ToListAsync(
+                    cancellationToken);
 
         return new MigraineAttackStatisticsResponse
         {
-            AttackCount = attacks.Count,
+            AttackCount =
+                attacks.Count,
 
-            AverageIntensity = Math.Round(
-                attacks.Average(x => x.Intensity),
-                2),
+            AverageIntensity =
+                Math.Round(
+                    attacks.Average(x =>
+                        x.Intensity),
+                    2),
 
-            AverageDurationMinutes = Math.Round(
-                attacks.Average(x =>
-                    (x.EndAt - x.StartAt).TotalMinutes),
-                2),
+            AverageDurationMinutes =
+                Math.Round(
+                    attacks.Average(x =>
+                        (x.EndAt -
+                         x.StartAt)
+                        .TotalMinutes),
+                    2),
 
-            Symptoms = symptoms,
-            Triggers = triggers,
-            Medications = medications
+            Symptoms =
+                symptoms,
+
+            Triggers =
+                triggers,
+
+            Medications =
+                medications
         };
     }
 
-    public async Task<MigraineAttackResponse?> GetByIdAsync(
-        Guid userId,
-        Guid attackId,
-        CancellationToken cancellationToken = default)
+    public async Task<MigraineAttackResponse?>
+        GetByIdAsync(
+            Guid userId,
+            Guid attackId,
+            CancellationToken cancellationToken = default)
     {
-        return await _dbContext.MigraineAttacks
+        return await _dbContext
+            .MigraineAttacks
             .AsNoTracking()
             .AsSplitQuery()
             .Where(x =>
                 x.Id == attackId &&
                 x.UserId == userId)
-            .Select(x => new MigraineAttackResponse
-            {
-                Id = x.Id,
-                StartAt = x.StartAt,
-                EndAt = x.EndAt,
+            .Select(x =>
+                new MigraineAttackResponse
+                {
+                    Id = x.Id,
 
-                DurationMinutes =
-                    (x.EndAt - x.StartAt).TotalMinutes,
+                    StartAt =
+                        x.StartAt,
 
-                Intensity = x.Intensity,
-                PainLocation = x.PainLocation,
+                    EndAt =
+                        x.EndAt,
 
-                PainLocationDescription =
-                    x.PainLocationDescription,
+                    DurationMinutes =
+                        (x.EndAt -
+                         x.StartAt)
+                        .TotalMinutes,
 
-                Notes = x.Notes,
-                CreatedAt = x.CreatedAt,
+                    Intensity =
+                        x.Intensity,
 
-                Symptoms = x.Symptoms
-                    .OrderBy(s => s.Symptom.Name)
-                    .Select(s => new AttackSymptomResponse
-                    {
-                        SymptomId = s.SymptomId,
-                        Name = s.Symptom.Name,
-                        Description = s.Description
-                    })
-                    .ToList(),
+                    PainLocation =
+                        x.PainLocation,
 
-                Triggers = x.Triggers
-                    .OrderBy(t => t.Trigger.Name)
-                    .Select(t => new AttackTriggerResponse
-                    {
-                        TriggerId = t.TriggerId,
-                        Name = t.Trigger.Name,
-                        Description = t.Description
-                    })
-                    .ToList(),
+                    PainLocationDescription =
+                        x.PainLocationDescription,
 
-                Medications = x.Medications
-                    .OrderBy(m => m.TakenAt)
-                    .ThenBy(m => m.Medication.Name)
-                    .Select(m => new AttackMedicationResponse
-                    {
-                        Id = m.Id,
-                        MedicationId = m.MedicationId,
-                        Name = m.Medication.Name,
-                        Dosage = m.Dosage,
-                        TakenAt = m.TakenAt
-                    })
-                    .ToList()
-            })
-            .SingleOrDefaultAsync(cancellationToken);
+                    Notes =
+                        x.Notes,
+
+                    CreatedAt =
+                        x.CreatedAt,
+
+                    Symptoms =
+                        x.Symptoms
+                            .OrderBy(s =>
+                                s.Symptom.Name)
+                            .Select(s =>
+                                new AttackSymptomResponse
+                                {
+                                    SymptomId =
+                                        s.SymptomId,
+
+                                    Name =
+                                        s.Symptom.Name,
+
+                                    Description =
+                                        s.Description
+                                })
+                            .ToList(),
+
+                    Triggers =
+                        x.Triggers
+                            .OrderBy(t =>
+                                t.Trigger.Name)
+                            .Select(t =>
+                                new AttackTriggerResponse
+                                {
+                                    TriggerId =
+                                        t.TriggerId,
+
+                                    Name =
+                                        t.Trigger.Name,
+
+                                    Description =
+                                        t.Description
+                                })
+                            .ToList(),
+
+                    Medications =
+                        x.Medications
+                            .OrderBy(m =>
+                                m.TakenAt)
+                            .ThenBy(m =>
+                                m.Medication.Name)
+                            .Select(m =>
+                                new AttackMedicationResponse
+                                {
+                                    Id =
+                                        m.Id,
+
+                                    MedicationId =
+                                        m.MedicationId,
+
+                                    Name =
+                                        m.Medication.Name,
+
+                                    Dosage =
+                                        m.Dosage,
+
+                                    TakenAt =
+                                        m.TakenAt
+                                })
+                            .ToList()
+                })
+            .SingleOrDefaultAsync(
+                cancellationToken);
     }
 
-    public async Task<MigraineAttackResponse?> UpdateAsync(
-        Guid userId,
-        Guid attackId,
-        UpdateMigraineAttackRequest request,
-        CancellationToken cancellationToken = default)
+    public async Task<MigraineAttackResponse?>
+        UpdateAsync(
+            Guid userId,
+            Guid attackId,
+            UpdateMigraineAttackRequest request,
+            CancellationToken cancellationToken = default)
     {
-        var attack = await _dbContext.MigraineAttacks
-            .AsSplitQuery()
-            .Include(x => x.Symptoms)
-            .Include(x => x.Triggers)
-            .SingleOrDefaultAsync(
-                x =>
-                    x.Id == attackId &&
-                    x.UserId == userId,
-                cancellationToken);
+        var attack =
+            await _dbContext.MigraineAttacks
+                .AsSplitQuery()
+                .Include(x =>
+                    x.Symptoms)
+                .Include(x =>
+                    x.Triggers)
+                .SingleOrDefaultAsync(
+                    x =>
+                        x.Id == attackId &&
+                        x.UserId == userId,
+                    cancellationToken);
 
         if (attack is null)
         {
             return null;
         }
 
-        var startAt = request.StartAt!.Value.ToUniversalTime();
-        var endAt = request.EndAt!.Value.ToUniversalTime();
+        var startAt =
+            request.StartAt!.Value
+                .ToUniversalTime();
+
+        var endAt =
+            request.EndAt!.Value
+                .ToUniversalTime();
 
         if (endAt < startAt)
         {
@@ -468,47 +693,67 @@ public sealed class MigraineAttackService
                 cancellationToken);
 
         await using var transaction =
-            await _dbContext.Database.BeginTransactionAsync(
-                cancellationToken);
+            await _dbContext.Database
+                .BeginTransactionAsync(
+                    cancellationToken);
 
-        attack.StartAt = startAt;
-        attack.EndAt = endAt;
-        attack.Intensity = request.Intensity;
-        attack.PainLocation = request.PainLocation!.Value;
+        attack.StartAt =
+            startAt;
+
+        attack.EndAt =
+            endAt;
+
+        attack.Intensity =
+            request.Intensity;
+
+        attack.PainLocation =
+            request.PainLocation!.Value;
 
         attack.PainLocationDescription =
             string.IsNullOrWhiteSpace(
                 request.PainLocationDescription)
                 ? null
-                : request.PainLocationDescription.Trim();
+                : request
+                    .PainLocationDescription
+                    .Trim();
 
         attack.Notes =
-            string.IsNullOrWhiteSpace(request.Notes)
+            string.IsNullOrWhiteSpace(
+                request.Notes)
                 ? null
                 : request.Notes.Trim();
 
-        var symptomsToRemove = attack.Symptoms
-            .Where(x =>
-                !requestedSymptoms.ContainsKey(
-                    x.SymptomId))
-            .ToList();
+        var symptomsToRemove =
+            attack.Symptoms
+                .Where(x =>
+                    !requestedSymptoms
+                        .ContainsKey(
+                            x.SymptomId))
+                .ToList();
 
-        _dbContext.AttackSymptoms.RemoveRange(
-            symptomsToRemove);
+        _dbContext.AttackSymptoms
+            .RemoveRange(
+                symptomsToRemove);
 
-        foreach (var requestedSymptom in requestedSymptoms)
+        foreach (var requestedSymptom
+                 in requestedSymptoms)
         {
-            var existingSymptom = attack.Symptoms
-                .SingleOrDefault(x =>
-                    x.SymptomId == requestedSymptom.Key);
+            var existingSymptom =
+                attack.Symptoms
+                    .SingleOrDefault(x =>
+                        x.SymptomId ==
+                        requestedSymptom.Key);
 
             if (existingSymptom is null)
             {
                 attack.Symptoms.Add(
                     new AttackSymptom
                     {
-                        SymptomId = requestedSymptom.Key,
-                        Description = requestedSymptom.Value
+                        SymptomId =
+                            requestedSymptom.Key,
+
+                        Description =
+                            requestedSymptom.Value
                     });
             }
             else
@@ -518,28 +763,37 @@ public sealed class MigraineAttackService
             }
         }
 
-        var triggersToRemove = attack.Triggers
-            .Where(x =>
-                !requestedTriggers.ContainsKey(
-                    x.TriggerId))
-            .ToList();
+        var triggersToRemove =
+            attack.Triggers
+                .Where(x =>
+                    !requestedTriggers
+                        .ContainsKey(
+                            x.TriggerId))
+                .ToList();
 
-        _dbContext.AttackTriggers.RemoveRange(
-            triggersToRemove);
+        _dbContext.AttackTriggers
+            .RemoveRange(
+                triggersToRemove);
 
-        foreach (var requestedTrigger in requestedTriggers)
+        foreach (var requestedTrigger
+                 in requestedTriggers)
         {
-            var existingTrigger = attack.Triggers
-                .SingleOrDefault(x =>
-                    x.TriggerId == requestedTrigger.Key);
+            var existingTrigger =
+                attack.Triggers
+                    .SingleOrDefault(x =>
+                        x.TriggerId ==
+                        requestedTrigger.Key);
 
             if (existingTrigger is null)
             {
                 attack.Triggers.Add(
                     new AttackTrigger
                     {
-                        TriggerId = requestedTrigger.Key,
-                        Description = requestedTrigger.Value
+                        TriggerId =
+                            requestedTrigger.Key,
+
+                        Description =
+                            requestedTrigger.Value
                     });
             }
             else
@@ -551,20 +805,31 @@ public sealed class MigraineAttackService
 
         await _dbContext.AttackMedications
             .Where(x =>
-                x.MigraineAttackId == attackId)
+                x.MigraineAttackId ==
+                attackId)
             .ExecuteDeleteAsync(
                 cancellationToken);
 
-        foreach (var medication in requestedMedications)
+        foreach (var medication
+                 in requestedMedications)
         {
             _dbContext.AttackMedications.Add(
                 new AttackMedication
                 {
-                    Id = Guid.NewGuid(),
-                    MigraineAttackId = attackId,
-                    MedicationId = medication.MedicationId,
-                    Dosage = medication.Dosage,
-                    TakenAt = medication.TakenAt
+                    Id =
+                        Guid.NewGuid(),
+
+                    MigraineAttackId =
+                        attackId,
+
+                    MedicationId =
+                        medication.MedicationId,
+
+                    Dosage =
+                        medication.Dosage,
+
+                    TakenAt =
+                        medication.TakenAt
                 });
         }
 
@@ -585,19 +850,21 @@ public sealed class MigraineAttackService
         Guid attackId,
         CancellationToken cancellationToken = default)
     {
-        var attack = await _dbContext.MigraineAttacks
-            .SingleOrDefaultAsync(
-                x =>
-                    x.Id == attackId &&
-                    x.UserId == userId,
-                cancellationToken);
+        var attack =
+            await _dbContext.MigraineAttacks
+                .SingleOrDefaultAsync(
+                    x =>
+                        x.Id == attackId &&
+                        x.UserId == userId,
+                    cancellationToken);
 
         if (attack is null)
         {
             return false;
         }
 
-        _dbContext.MigraineAttacks.Remove(attack);
+        _dbContext.MigraineAttacks.Remove(
+            attack);
 
         await _dbContext.SaveChangesAsync(
             cancellationToken);
@@ -610,7 +877,8 @@ public sealed class MigraineAttackService
     {
         if (request.From.HasValue &&
             request.To.HasValue &&
-            request.To.Value < request.From.Value)
+            request.To.Value <
+            request.From.Value)
         {
             throw new ArgumentException(
                 "Конец периода не может быть раньше начала периода.");
@@ -622,7 +890,8 @@ public sealed class MigraineAttackService
     {
         if (filter.From.HasValue &&
             filter.To.HasValue &&
-            filter.To.Value < filter.From.Value)
+            filter.To.Value <
+            filter.From.Value)
         {
             throw new ArgumentException(
                 "Конец периода не может быть раньше начала периода.");
@@ -638,21 +907,24 @@ public sealed class MigraineAttackService
         }
 
         if (filter.SymptomId.HasValue &&
-            filter.SymptomId.Value == Guid.Empty)
+            filter.SymptomId.Value ==
+            Guid.Empty)
         {
             throw new ArgumentException(
                 "Идентификатор симптома не может быть пустым.");
         }
 
         if (filter.TriggerId.HasValue &&
-            filter.TriggerId.Value == Guid.Empty)
+            filter.TriggerId.Value ==
+            Guid.Empty)
         {
             throw new ArgumentException(
                 "Идентификатор триггера не может быть пустым.");
         }
 
         if (filter.MedicationId.HasValue &&
-            filter.MedicationId.Value == Guid.Empty)
+            filter.MedicationId.Value ==
+            Guid.Empty)
         {
             throw new ArgumentException(
                 "Идентификатор препарата не может быть пустым.");
@@ -669,28 +941,40 @@ public sealed class MigraineAttackService
             return new Dictionary<Guid, string?>();
         }
 
-        if (symptoms.Any(x => x.SymptomId == Guid.Empty))
+        if (symptoms.Any(x =>
+            x.SymptomId == Guid.Empty))
         {
             throw new ArgumentException(
                 "Идентификатор симптома не может быть пустым.");
         }
 
-        var symptomIds = symptoms
-            .Select(x => x.SymptomId)
-            .ToArray();
+        var symptomIds =
+            symptoms
+                .Select(x =>
+                    x.SymptomId)
+                .ToArray();
 
-        if (symptomIds.Distinct().Count() != symptomIds.Length)
+        if (symptomIds
+                .Distinct()
+                .Count() !=
+            symptomIds.Length)
         {
             throw new ArgumentException(
                 "Один и тот же симптом нельзя указать несколько раз.");
         }
 
-        var existingIds = await _dbContext.Symptoms
-            .Where(x => symptomIds.Contains(x.Id))
-            .Select(x => x.Id)
-            .ToListAsync(cancellationToken);
+        var existingIds =
+            await _dbContext.Symptoms
+                .Where(x =>
+                    symptomIds.Contains(
+                        x.Id))
+                .Select(x =>
+                    x.Id)
+                .ToListAsync(
+                    cancellationToken);
 
-        if (existingIds.Count != symptomIds.Length)
+        if (existingIds.Count !=
+            symptomIds.Length)
         {
             throw new ArgumentException(
                 "Один или несколько указанных симптомов не существуют.");
@@ -698,9 +982,11 @@ public sealed class MigraineAttackService
 
         return symptoms.ToDictionary(
             x => x.SymptomId,
-            x => string.IsNullOrWhiteSpace(x.Description)
-                ? null
-                : x.Description.Trim());
+            x =>
+                string.IsNullOrWhiteSpace(
+                    x.Description)
+                    ? null
+                    : x.Description.Trim());
     }
 
     private async Task<Dictionary<Guid, string?>>
@@ -713,28 +999,40 @@ public sealed class MigraineAttackService
             return new Dictionary<Guid, string?>();
         }
 
-        if (triggers.Any(x => x.TriggerId == Guid.Empty))
+        if (triggers.Any(x =>
+            x.TriggerId == Guid.Empty))
         {
             throw new ArgumentException(
                 "Идентификатор триггера не может быть пустым.");
         }
 
-        var triggerIds = triggers
-            .Select(x => x.TriggerId)
-            .ToArray();
+        var triggerIds =
+            triggers
+                .Select(x =>
+                    x.TriggerId)
+                .ToArray();
 
-        if (triggerIds.Distinct().Count() != triggerIds.Length)
+        if (triggerIds
+                .Distinct()
+                .Count() !=
+            triggerIds.Length)
         {
             throw new ArgumentException(
                 "Один и тот же триггер нельзя указать несколько раз.");
         }
 
-        var existingIds = await _dbContext.Triggers
-            .Where(x => triggerIds.Contains(x.Id))
-            .Select(x => x.Id)
-            .ToListAsync(cancellationToken);
+        var existingIds =
+            await _dbContext.Triggers
+                .Where(x =>
+                    triggerIds.Contains(
+                        x.Id))
+                .Select(x =>
+                    x.Id)
+                .ToListAsync(
+                    cancellationToken);
 
-        if (existingIds.Count != triggerIds.Length)
+        if (existingIds.Count !=
+            triggerIds.Length)
         {
             throw new ArgumentException(
                 "Один или несколько указанных триггеров не существуют.");
@@ -742,12 +1040,15 @@ public sealed class MigraineAttackService
 
         return triggers.ToDictionary(
             x => x.TriggerId,
-            x => string.IsNullOrWhiteSpace(x.Description)
-                ? null
-                : x.Description.Trim());
+            x =>
+                string.IsNullOrWhiteSpace(
+                    x.Description)
+                    ? null
+                    : x.Description.Trim());
     }
 
-    private async Task<IReadOnlyList<NormalizedAttackMedication>>
+    private async Task<
+        IReadOnlyList<NormalizedAttackMedication>>
         ValidateAndNormalizeMedicationsAsync(
             Guid userId,
             IReadOnlyCollection<AttackMedicationRequest> medications,
@@ -755,29 +1056,39 @@ public sealed class MigraineAttackService
     {
         if (medications.Count == 0)
         {
-            return Array.Empty<NormalizedAttackMedication>();
+            return Array.Empty<
+                NormalizedAttackMedication>();
         }
 
         if (medications.Any(x =>
-            x.MedicationId == Guid.Empty))
+            x.MedicationId ==
+            Guid.Empty))
         {
             throw new ArgumentException(
                 "Идентификатор препарата не может быть пустым.");
         }
 
-        var medicationIds = medications
-            .Select(x => x.MedicationId)
-            .Distinct()
-            .ToArray();
+        var medicationIds =
+            medications
+                .Select(x =>
+                    x.MedicationId)
+                .Distinct()
+                .ToArray();
 
-        var existingIds = await _dbContext.Medications
-            .Where(x =>
-                x.UserId == userId &&
-                medicationIds.Contains(x.Id))
-            .Select(x => x.Id)
-            .ToListAsync(cancellationToken);
+        var existingIds =
+            await _dbContext.Medications
+                .Where(x =>
+                    x.UserId ==
+                    userId &&
+                    medicationIds.Contains(
+                        x.Id))
+                .Select(x =>
+                    x.Id)
+                .ToListAsync(
+                    cancellationToken);
 
-        if (existingIds.Count != medicationIds.Length)
+        if (existingIds.Count !=
+            medicationIds.Length)
         {
             throw new ArgumentException(
                 "Один или несколько указанных препаратов не существуют.");
@@ -787,10 +1098,14 @@ public sealed class MigraineAttackService
             .Select(x =>
                 new NormalizedAttackMedication(
                     x.MedicationId,
-                    string.IsNullOrWhiteSpace(x.Dosage)
+
+                    string.IsNullOrWhiteSpace(
+                        x.Dosage)
                         ? null
                         : x.Dosage.Trim(),
-                    x.TakenAt?.ToUniversalTime()))
+
+                    x.TakenAt?
+                        .ToUniversalTime()))
             .ToList();
     }
 

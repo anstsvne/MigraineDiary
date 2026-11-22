@@ -3,6 +3,7 @@ using MigraineDiary.Api.Contracts.MigraineAttacks;
 using MigraineDiary.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using MigraineDiary.Api.Contracts.Common;
 
 namespace MigraineDiary.Api.Controllers;
 
@@ -20,12 +21,14 @@ public sealed class MigraineAttacksController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IReadOnlyList<MigraineAttackResponse>>> GetAll(
-    [FromQuery] MigraineAttackFilterRequest filter,
-    CancellationToken cancellationToken)
+    public async Task<ActionResult<
+     PagedResponse<MigraineAttackResponse>>> GetAll(
+     [FromQuery] MigraineAttackFilterRequest filter,
+     CancellationToken cancellationToken)
     {
-        var userIdValue = User.FindFirstValue(
-            ClaimTypes.NameIdentifier);
+        var userIdValue =
+            User.FindFirstValue(
+                ClaimTypes.NameIdentifier);
 
         if (!Guid.TryParse(
             userIdValue,
