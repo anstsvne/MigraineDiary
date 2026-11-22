@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using MigraineDiary.Api.Contracts.Auth;
+using MigraineDiary.Api.Contracts.Common;
 using MigraineDiary.Api.Contracts.MigraineAttacks;
 using MigraineDiary.Api.Enums;
 using MigraineDiary.Api.Tests.Infrastructure;
@@ -34,26 +35,37 @@ public sealed class MigraineAttackApiTests
     [Fact]
     public async Task Create_ShouldCreateAttack()
     {
-        var token = await CreateUserAndLoginAsync();
+        var token =
+            await CreateUserAndLoginAsync();
 
-        var request = CreateAttackRequest(
-            startAt: new DateTimeOffset(
-                2026, 11, 1,
-                10, 0, 0,
-                TimeSpan.Zero),
-            endAt: new DateTimeOffset(
-                2026, 11, 1,
-                14, 0, 0,
-                TimeSpan.Zero),
-            intensity: 7,
-            painLocation: PainLocation.LeftSide,
-            notes: "Integration test attack");
+        var request =
+            CreateAttackRequest(
+                startAt:
+                    new DateTimeOffset(
+                        2026, 11, 1,
+                        10, 0, 0,
+                        TimeSpan.Zero),
 
-        var response = await SendAuthorizedAsync(
-            HttpMethod.Post,
-            "/api/migraine-attacks",
-            token,
-            request);
+                endAt:
+                    new DateTimeOffset(
+                        2026, 11, 1,
+                        14, 0, 0,
+                        TimeSpan.Zero),
+
+                intensity: 7,
+
+                painLocation:
+                    PainLocation.LeftSide,
+
+                notes:
+                    "Integration test attack");
+
+        var response =
+            await SendAuthorizedAsync(
+                HttpMethod.Post,
+                "/api/migraine-attacks",
+                token,
+                request);
 
         Assert.Equal(
             HttpStatusCode.Created,
@@ -64,14 +76,23 @@ public sealed class MigraineAttackApiTests
                 response);
 
         Assert.NotNull(attack);
-        Assert.NotEqual(Guid.Empty, attack.Id);
-        Assert.Equal(7, attack.Intensity);
+
+        Assert.NotEqual(
+            Guid.Empty,
+            attack.Id);
+
+        Assert.Equal(
+            7,
+            attack.Intensity);
+
         Assert.Equal(
             PainLocation.LeftSide,
             attack.PainLocation);
+
         Assert.Equal(
             "Integration test attack",
             attack.Notes);
+
         Assert.Equal(
             240,
             attack.DurationMinutes);
@@ -80,7 +101,8 @@ public sealed class MigraineAttackApiTests
     [Fact]
     public async Task GetById_ShouldReturnCreatedAttack()
     {
-        var token = await CreateUserAndLoginAsync();
+        var token =
+            await CreateUserAndLoginAsync();
 
         var created =
             await CreateAttackAsync(
@@ -90,10 +112,12 @@ public sealed class MigraineAttackApiTests
                         2026, 11, 2,
                         8, 0, 0,
                         TimeSpan.Zero),
+
                     new DateTimeOffset(
                         2026, 11, 2,
                         10, 0, 0,
                         TimeSpan.Zero),
+
                     5,
                     PainLocation.Temples,
                     "Get by id test"));
@@ -113,8 +137,15 @@ public sealed class MigraineAttackApiTests
                 response);
 
         Assert.NotNull(attack);
-        Assert.Equal(created.Id, attack.Id);
-        Assert.Equal(5, attack.Intensity);
+
+        Assert.Equal(
+            created.Id,
+            attack.Id);
+
+        Assert.Equal(
+            5,
+            attack.Intensity);
+
         Assert.Equal(
             PainLocation.Temples,
             attack.PainLocation);
@@ -123,7 +154,8 @@ public sealed class MigraineAttackApiTests
     [Fact]
     public async Task Update_ShouldChangeAttack()
     {
-        var token = await CreateUserAndLoginAsync();
+        var token =
+            await CreateUserAndLoginAsync();
 
         var created =
             await CreateAttackAsync(
@@ -133,10 +165,12 @@ public sealed class MigraineAttackApiTests
                         2026, 11, 3,
                         9, 0, 0,
                         TimeSpan.Zero),
+
                     new DateTimeOffset(
                         2026, 11, 3,
                         11, 0, 0,
                         TimeSpan.Zero),
+
                     4,
                     PainLocation.RightSide,
                     "Before update"));
@@ -184,14 +218,23 @@ public sealed class MigraineAttackApiTests
                 response);
 
         Assert.NotNull(updated);
-        Assert.Equal(created.Id, updated.Id);
-        Assert.Equal(8, updated.Intensity);
+
+        Assert.Equal(
+            created.Id,
+            updated.Id);
+
+        Assert.Equal(
+            8,
+            updated.Intensity);
+
         Assert.Equal(
             PainLocation.BothSides,
             updated.PainLocation);
+
         Assert.Equal(
             "After update",
             updated.Notes);
+
         Assert.Equal(
             240,
             updated.DurationMinutes);
@@ -200,7 +243,8 @@ public sealed class MigraineAttackApiTests
     [Fact]
     public async Task Delete_ShouldRemoveAttack()
     {
-        var token = await CreateUserAndLoginAsync();
+        var token =
+            await CreateUserAndLoginAsync();
 
         var created =
             await CreateAttackAsync(
@@ -210,10 +254,12 @@ public sealed class MigraineAttackApiTests
                         2026, 11, 4,
                         10, 0, 0,
                         TimeSpan.Zero),
+
                     new DateTimeOffset(
                         2026, 11, 4,
                         12, 0, 0,
                         TimeSpan.Zero),
+
                     5,
                     PainLocation.Forehead,
                     "Delete test"));
@@ -256,10 +302,12 @@ public sealed class MigraineAttackApiTests
                         2026, 11, 5,
                         10, 0, 0,
                         TimeSpan.Zero),
+
                     new DateTimeOffset(
                         2026, 11, 5,
                         12, 0, 0,
                         TimeSpan.Zero),
+
                     6,
                     PainLocation.LeftSide,
                     "Private attack"));
@@ -292,10 +340,12 @@ public sealed class MigraineAttackApiTests
                         2026, 11, 6,
                         10, 0, 0,
                         TimeSpan.Zero),
+
                     new DateTimeOffset(
                         2026, 11, 6,
                         12, 0, 0,
                         TimeSpan.Zero),
+
                     6,
                     PainLocation.LeftSide,
                     "First user"));
@@ -307,10 +357,12 @@ public sealed class MigraineAttackApiTests
                     2026, 11, 6,
                     13, 0, 0,
                     TimeSpan.Zero),
+
                 new DateTimeOffset(
                     2026, 11, 6,
                     15, 0, 0,
                     TimeSpan.Zero),
+
                 9,
                 PainLocation.RightSide,
                 "Second user"));
@@ -325,27 +377,46 @@ public sealed class MigraineAttackApiTests
             HttpStatusCode.OK,
             response.StatusCode);
 
-        var attacks =
+        var page =
             await ReadJsonAsync<
-                List<MigraineAttackResponse>>(
+                PagedResponse<MigraineAttackResponse>>(
                 response);
 
-        Assert.NotNull(attacks);
-        Assert.Single(attacks);
+        Assert.NotNull(page);
+
+        Assert.Equal(
+            1,
+            page.Page);
+
+        Assert.Equal(
+            20,
+            page.PageSize);
+
+        Assert.Equal(
+            1,
+            page.TotalCount);
+
+        Assert.Equal(
+            1,
+            page.TotalPages);
+
+        Assert.Single(
+            page.Items);
 
         Assert.Equal(
             firstUserAttack.Id,
-            attacks[0].Id);
+            page.Items[0].Id);
 
         Assert.Equal(
             "First user",
-            attacks[0].Notes);
+            page.Items[0].Notes);
     }
 
     [Fact]
     public async Task FilterByIntensity_ShouldReturnMatchingAttacks()
     {
-        var token = await CreateUserAndLoginAsync();
+        var token =
+            await CreateUserAndLoginAsync();
 
         await CreateAttackAsync(
             token,
@@ -354,10 +425,12 @@ public sealed class MigraineAttackApiTests
                     2026, 11, 7,
                     8, 0, 0,
                     TimeSpan.Zero),
+
                 new DateTimeOffset(
                     2026, 11, 7,
                     10, 0, 0,
                     TimeSpan.Zero),
+
                 3,
                 PainLocation.Forehead,
                 "Low intensity"));
@@ -370,10 +443,12 @@ public sealed class MigraineAttackApiTests
                         2026, 11, 7,
                         12, 0, 0,
                         TimeSpan.Zero),
+
                     new DateTimeOffset(
                         2026, 11, 7,
                         16, 0, 0,
                         TimeSpan.Zero),
+
                     8,
                     PainLocation.Temples,
                     "High intensity"));
@@ -388,25 +463,214 @@ public sealed class MigraineAttackApiTests
             HttpStatusCode.OK,
             response.StatusCode);
 
-        var attacks =
+        var page =
             await ReadJsonAsync<
-                List<MigraineAttackResponse>>(
+                PagedResponse<MigraineAttackResponse>>(
                 response);
 
-        Assert.NotNull(attacks);
-        Assert.Single(attacks);
+        Assert.NotNull(page);
+
+        Assert.Equal(
+            1,
+            page.TotalCount);
+
+        Assert.Equal(
+            1,
+            page.TotalPages);
+
+        Assert.Single(
+            page.Items);
+
         Assert.Equal(
             highIntensityAttack.Id,
-            attacks[0].Id);
+            page.Items[0].Id);
+
         Assert.Equal(
             8,
-            attacks[0].Intensity);
+            page.Items[0].Intensity);
+    }
+
+    [Fact]
+    public async Task Pagination_ShouldReturnRequestedPage()
+    {
+        var token =
+            await CreateUserAndLoginAsync();
+
+        var oldest =
+            await CreateAttackAsync(
+                token,
+                CreateAttackRequest(
+                    new DateTimeOffset(
+                        2026, 11, 10,
+                        8, 0, 0,
+                        TimeSpan.Zero),
+
+                    new DateTimeOffset(
+                        2026, 11, 10,
+                        10, 0, 0,
+                        TimeSpan.Zero),
+
+                    4,
+                    PainLocation.LeftSide,
+                    "Oldest"));
+
+        await CreateAttackAsync(
+            token,
+            CreateAttackRequest(
+                new DateTimeOffset(
+                    2026, 11, 11,
+                    8, 0, 0,
+                    TimeSpan.Zero),
+
+                new DateTimeOffset(
+                    2026, 11, 11,
+                    10, 0, 0,
+                    TimeSpan.Zero),
+
+                5,
+                PainLocation.RightSide,
+                "Middle"));
+
+        await CreateAttackAsync(
+            token,
+            CreateAttackRequest(
+                new DateTimeOffset(
+                    2026, 11, 12,
+                    8, 0, 0,
+                    TimeSpan.Zero),
+
+                new DateTimeOffset(
+                    2026, 11, 12,
+                    10, 0, 0,
+                    TimeSpan.Zero),
+
+                6,
+                PainLocation.Forehead,
+                "Newest"));
+
+        var response =
+            await SendAuthorizedAsync(
+                HttpMethod.Get,
+                "/api/migraine-attacks?page=2&pageSize=2",
+                token);
+
+        Assert.Equal(
+            HttpStatusCode.OK,
+            response.StatusCode);
+
+        var page =
+            await ReadJsonAsync<
+                PagedResponse<MigraineAttackResponse>>(
+                response);
+
+        Assert.NotNull(page);
+
+        Assert.Equal(
+            2,
+            page.Page);
+
+        Assert.Equal(
+            2,
+            page.PageSize);
+
+        Assert.Equal(
+            3,
+            page.TotalCount);
+
+        Assert.Equal(
+            2,
+            page.TotalPages);
+
+        Assert.Single(
+            page.Items);
+
+        Assert.Equal(
+            oldest.Id,
+            page.Items[0].Id);
+    }
+
+    [Fact]
+    public async Task Pagination_WithInvalidPage_ShouldReturnBadRequest()
+    {
+        var token =
+            await CreateUserAndLoginAsync();
+
+        var response =
+            await SendAuthorizedAsync(
+                HttpMethod.Get,
+                "/api/migraine-attacks?page=0&pageSize=20",
+                token);
+
+        Assert.Equal(
+            HttpStatusCode.BadRequest,
+            response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Pagination_BeyondLastPage_ShouldReturnEmptyItems()
+    {
+        var token =
+            await CreateUserAndLoginAsync();
+
+        await CreateAttackAsync(
+            token,
+            CreateAttackRequest(
+                new DateTimeOffset(
+                    2026, 11, 13,
+                    8, 0, 0,
+                    TimeSpan.Zero),
+
+                new DateTimeOffset(
+                    2026, 11, 13,
+                    10, 0, 0,
+                    TimeSpan.Zero),
+
+                5,
+                PainLocation.Temples,
+                "Only attack"));
+
+        var response =
+            await SendAuthorizedAsync(
+                HttpMethod.Get,
+                "/api/migraine-attacks?page=5&pageSize=2",
+                token);
+
+        Assert.Equal(
+            HttpStatusCode.OK,
+            response.StatusCode);
+
+        var page =
+            await ReadJsonAsync<
+                PagedResponse<MigraineAttackResponse>>(
+                response);
+
+        Assert.NotNull(page);
+
+        Assert.Equal(
+            5,
+            page.Page);
+
+        Assert.Equal(
+            2,
+            page.PageSize);
+
+        Assert.Equal(
+            1,
+            page.TotalCount);
+
+        Assert.Equal(
+            1,
+            page.TotalPages);
+
+        Assert.Empty(
+            page.Items);
     }
 
     [Fact]
     public async Task Statistics_ShouldCalculateCurrentUsersAttacks()
     {
-        var token = await CreateUserAndLoginAsync();
+        var token =
+            await CreateUserAndLoginAsync();
 
         await CreateAttackAsync(
             token,
@@ -415,10 +679,12 @@ public sealed class MigraineAttackApiTests
                     2026, 11, 8,
                     8, 0, 0,
                     TimeSpan.Zero),
+
                 new DateTimeOffset(
                     2026, 11, 8,
                     10, 0, 0,
                     TimeSpan.Zero),
+
                 4,
                 PainLocation.LeftSide,
                 "Statistics 1"));
@@ -430,10 +696,12 @@ public sealed class MigraineAttackApiTests
                     2026, 11, 9,
                     8, 0, 0,
                     TimeSpan.Zero),
+
                 new DateTimeOffset(
                     2026, 11, 9,
                     12, 0, 0,
                     TimeSpan.Zero),
+
                 8,
                 PainLocation.RightSide,
                 "Statistics 2"));
@@ -471,7 +739,8 @@ public sealed class MigraineAttackApiTests
     [Fact]
     public async Task Statistics_WithInvalidPeriod_ShouldReturnBadRequest()
     {
-        var token = await CreateUserAndLoginAsync();
+        var token =
+            await CreateUserAndLoginAsync();
 
         var response =
             await SendAuthorizedAsync(
@@ -525,10 +794,17 @@ public sealed class MigraineAttackApiTests
                 "/api/auth/register",
                 new RegisterRequest
                 {
-                    Name = "Attack Test User",
-                    Email = email,
-                    Password = password,
-                    ConfirmPassword = password
+                    Name =
+                        "Attack Test User",
+
+                    Email =
+                        email,
+
+                    Password =
+                        password,
+
+                    ConfirmPassword =
+                        password
                 });
 
         Assert.Equal(
@@ -540,8 +816,11 @@ public sealed class MigraineAttackApiTests
                 "/api/auth/login",
                 new LoginRequest
                 {
-                    Email = email,
-                    Password = password
+                    Email =
+                        email,
+
+                    Password =
+                        password
                 });
 
         Assert.Equal(
@@ -605,13 +884,23 @@ public sealed class MigraineAttackApiTests
     {
         return new CreateMigraineAttackRequest
         {
-            StartAt = startAt,
-            EndAt = endAt,
-            Intensity = intensity,
-            PainLocation = painLocation,
+            StartAt =
+                startAt,
+
+            EndAt =
+                endAt,
+
+            Intensity =
+                intensity,
+
+            PainLocation =
+                painLocation,
+
             PainLocationDescription =
                 "Integration test location",
-            Notes = notes
+
+            Notes =
+                notes
         };
     }
 }

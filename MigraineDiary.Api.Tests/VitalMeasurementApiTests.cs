@@ -2,6 +2,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using MigraineDiary.Api.Contracts.Auth;
+using MigraineDiary.Api.Contracts.Common;
 using MigraineDiary.Api.Contracts.VitalMeasurements;
 using MigraineDiary.Api.Tests.Infrastructure;
 using Xunit;
@@ -22,7 +23,8 @@ public sealed class VitalMeasurementApiTests
     [Fact]
     public async Task Create_ShouldCreateMeasurement()
     {
-        var token = await CreateUserAndLoginAsync();
+        var token =
+            await CreateUserAndLoginAsync();
 
         var request =
             new CreateVitalMeasurementRequest
@@ -30,12 +32,15 @@ public sealed class VitalMeasurementApiTests
                 SystolicPressure = 120,
                 DiastolicPressure = 80,
                 Pulse = 70,
+
                 MeasuredAt =
                     new DateTimeOffset(
                         2026, 11, 10,
                         10, 0, 0,
                         TimeSpan.Zero),
-                Notes = "Test measurement"
+
+                Notes =
+                    "Test measurement"
             };
 
         var response =
@@ -55,18 +60,23 @@ public sealed class VitalMeasurementApiTests
                     VitalMeasurementResponse>();
 
         Assert.NotNull(measurement);
+
         Assert.NotEqual(
             Guid.Empty,
             measurement.Id);
+
         Assert.Equal(
             120,
             measurement.SystolicPressure);
+
         Assert.Equal(
             80,
             measurement.DiastolicPressure);
+
         Assert.Equal(
             70,
             measurement.Pulse);
+
         Assert.Equal(
             "Test measurement",
             measurement.Notes);
@@ -75,7 +85,8 @@ public sealed class VitalMeasurementApiTests
     [Fact]
     public async Task GetById_ShouldReturnCreatedMeasurement()
     {
-        var token = await CreateUserAndLoginAsync();
+        var token =
+            await CreateUserAndLoginAsync();
 
         var created =
             await CreateMeasurementAsync(
@@ -101,9 +112,11 @@ public sealed class VitalMeasurementApiTests
                     VitalMeasurementResponse>();
 
         Assert.NotNull(measurement);
+
         Assert.Equal(
             created.Id,
             measurement.Id);
+
         Assert.Equal(
             125,
             measurement.SystolicPressure);
@@ -112,7 +125,8 @@ public sealed class VitalMeasurementApiTests
     [Fact]
     public async Task Update_ShouldChangeMeasurement()
     {
-        var token = await CreateUserAndLoginAsync();
+        var token =
+            await CreateUserAndLoginAsync();
 
         var created =
             await CreateMeasurementAsync(
@@ -128,12 +142,15 @@ public sealed class VitalMeasurementApiTests
                 SystolicPressure = 130,
                 DiastolicPressure = 85,
                 Pulse = 76,
+
                 MeasuredAt =
                     new DateTimeOffset(
                         2026, 11, 11,
                         12, 0, 0,
                         TimeSpan.Zero),
-                Notes = "After update"
+
+                Notes =
+                    "After update"
             };
 
         var response =
@@ -153,15 +170,19 @@ public sealed class VitalMeasurementApiTests
                     VitalMeasurementResponse>();
 
         Assert.NotNull(measurement);
+
         Assert.Equal(
             130,
             measurement.SystolicPressure);
+
         Assert.Equal(
             85,
             measurement.DiastolicPressure);
+
         Assert.Equal(
             76,
             measurement.Pulse);
+
         Assert.Equal(
             "After update",
             measurement.Notes);
@@ -170,7 +191,8 @@ public sealed class VitalMeasurementApiTests
     [Fact]
     public async Task Delete_ShouldRemoveMeasurement()
     {
-        var token = await CreateUserAndLoginAsync();
+        var token =
+            await CreateUserAndLoginAsync();
 
         var created =
             await CreateMeasurementAsync(
@@ -263,22 +285,190 @@ public sealed class VitalMeasurementApiTests
             HttpStatusCode.OK,
             response.StatusCode);
 
-        var measurements =
+        var page =
             await response.Content
                 .ReadFromJsonAsync<
-                    List<VitalMeasurementResponse>>();
+                    PagedResponse<VitalMeasurementResponse>>();
 
-        Assert.NotNull(measurements);
-        Assert.Single(measurements);
+        Assert.NotNull(page);
+
+        Assert.Equal(
+            1,
+            page.Page);
+
+        Assert.Equal(
+            20,
+            page.PageSize);
+
+        Assert.Equal(
+            1,
+            page.TotalCount);
+
+        Assert.Equal(
+            1,
+            page.TotalPages);
+
+        Assert.Single(
+            page.Items);
+
         Assert.Equal(
             first.Id,
-            measurements[0].Id);
+            page.Items[0].Id);
+    }
+
+    [Fact]
+    public async Task Pagination_ShouldReturnRequestedPage()
+    {
+        var token =
+            await CreateUserAndLoginAsync();
+
+        var oldest =
+            await CreateMeasurementAsync(
+                token,
+                120,
+                80,
+                70,
+                "Oldest",
+                new DateTimeOffset(
+                    2026, 11, 10,
+                    8, 0, 0,
+                    TimeSpan.Zero));
+
+        await CreateMeasurementAsync(
+            token,
+            121,
+            81,
+            71,
+            "Middle",
+            new DateTimeOffset(
+                2026, 11, 11,
+                8, 0, 0,
+                TimeSpan.Zero));
+
+        await CreateMeasurementAsync(
+            token,
+            122,
+            82,
+            72,
+            "Newest",
+            new DateTimeOffset(
+                2026, 11, 12,
+                8, 0, 0,
+                TimeSpan.Zero));
+
+        var response =
+            await SendAuthorizedAsync(
+                HttpMethod.Get,
+                "/api/vital-measurements?page=2&pageSize=2",
+                token);
+
+        Assert.Equal(
+            HttpStatusCode.OK,
+            response.StatusCode);
+
+        var page =
+            await response.Content
+                .ReadFromJsonAsync<
+                    PagedResponse<VitalMeasurementResponse>>();
+
+        Assert.NotNull(page);
+
+        Assert.Equal(
+            2,
+            page.Page);
+
+        Assert.Equal(
+            2,
+            page.PageSize);
+
+        Assert.Equal(
+            3,
+            page.TotalCount);
+
+        Assert.Equal(
+            2,
+            page.TotalPages);
+
+        Assert.Single(
+            page.Items);
+
+        Assert.Equal(
+            oldest.Id,
+            page.Items[0].Id);
+    }
+
+    [Fact]
+    public async Task Pagination_WithInvalidPageSize_ShouldReturnBadRequest()
+    {
+        var token =
+            await CreateUserAndLoginAsync();
+
+        var response =
+            await SendAuthorizedAsync(
+                HttpMethod.Get,
+                "/api/vital-measurements?page=1&pageSize=101",
+                token);
+
+        Assert.Equal(
+            HttpStatusCode.BadRequest,
+            response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Pagination_BeyondLastPage_ShouldReturnEmptyItems()
+    {
+        var token =
+            await CreateUserAndLoginAsync();
+
+        await CreateMeasurementAsync(
+            token,
+            120,
+            80,
+            70,
+            "Only measurement");
+
+        var response =
+            await SendAuthorizedAsync(
+                HttpMethod.Get,
+                "/api/vital-measurements?page=10&pageSize=5",
+                token);
+
+        Assert.Equal(
+            HttpStatusCode.OK,
+            response.StatusCode);
+
+        var page =
+            await response.Content
+                .ReadFromJsonAsync<
+                    PagedResponse<VitalMeasurementResponse>>();
+
+        Assert.NotNull(page);
+
+        Assert.Equal(
+            10,
+            page.Page);
+
+        Assert.Equal(
+            5,
+            page.PageSize);
+
+        Assert.Equal(
+            1,
+            page.TotalCount);
+
+        Assert.Equal(
+            1,
+            page.TotalPages);
+
+        Assert.Empty(
+            page.Items);
     }
 
     [Fact]
     public async Task Create_WithInvalidPressure_ShouldReturnBadRequest()
     {
-        var token = await CreateUserAndLoginAsync();
+        var token =
+            await CreateUserAndLoginAsync();
 
         var request =
             new CreateVitalMeasurementRequest
@@ -286,6 +476,7 @@ public sealed class VitalMeasurementApiTests
                 SystolicPressure = 0,
                 DiastolicPressure = 80,
                 Pulse = 70,
+
                 MeasuredAt =
                     DateTimeOffset.UtcNow
             };
@@ -308,20 +499,30 @@ public sealed class VitalMeasurementApiTests
             int systolic,
             int diastolic,
             int pulse,
-            string notes)
+            string notes,
+            DateTimeOffset? measuredAt = null)
     {
         var request =
             new CreateVitalMeasurementRequest
             {
-                SystolicPressure = systolic,
-                DiastolicPressure = diastolic,
-                Pulse = pulse,
+                SystolicPressure =
+                    systolic,
+
+                DiastolicPressure =
+                    diastolic,
+
+                Pulse =
+                    pulse,
+
                 MeasuredAt =
+                    measuredAt ??
                     new DateTimeOffset(
                         2026, 11, 12,
                         10, 0, 0,
                         TimeSpan.Zero),
-                Notes = notes
+
+                Notes =
+                    notes
             };
 
         var response =
@@ -359,10 +560,17 @@ public sealed class VitalMeasurementApiTests
                 "/api/auth/register",
                 new RegisterRequest
                 {
-                    Name = "Vitals Test User",
-                    Email = email,
-                    Password = password,
-                    ConfirmPassword = password
+                    Name =
+                        "Vitals Test User",
+
+                    Email =
+                        email,
+
+                    Password =
+                        password,
+
+                    ConfirmPassword =
+                        password
                 });
 
         Assert.Equal(
@@ -374,8 +582,11 @@ public sealed class VitalMeasurementApiTests
                 "/api/auth/login",
                 new LoginRequest
                 {
-                    Email = email,
-                    Password = password
+                    Email =
+                        email,
+
+                    Password =
+                        password
                 });
 
         Assert.Equal(
@@ -411,9 +622,11 @@ public sealed class VitalMeasurementApiTests
         if (body is not null)
         {
             request.Content =
-                JsonContent.Create(body);
+                JsonContent.Create(
+                    body);
         }
 
-        return await _client.SendAsync(request);
+        return await _client.SendAsync(
+            request);
     }
 }

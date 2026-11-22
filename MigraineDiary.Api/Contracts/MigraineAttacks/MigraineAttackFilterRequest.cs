@@ -1,9 +1,11 @@
 using System.ComponentModel.DataAnnotations;
+using MigraineDiary.Api.Contracts.Common;
 using MigraineDiary.Api.Enums;
 
 namespace MigraineDiary.Api.Contracts.MigraineAttacks;
 
 public sealed class MigraineAttackFilterRequest
+    : PaginationRequest
 {
     public DateTimeOffset? From { get; init; }
 

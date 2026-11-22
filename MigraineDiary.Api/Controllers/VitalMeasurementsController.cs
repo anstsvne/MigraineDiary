@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using MigraineDiary.Api.Contracts.Common;
 using MigraineDiary.Api.Contracts.VitalMeasurements;
 using MigraineDiary.Api.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -21,7 +22,8 @@ public sealed class VitalMeasurementsController : ControllerBase
 
     [HttpGet]
     public async Task<ActionResult<
-        IReadOnlyCollection<VitalMeasurementResponse>>> GetAll(
+        PagedResponse<VitalMeasurementResponse>>> GetAll(
+        [FromQuery] PaginationRequest pagination,
         CancellationToken cancellationToken)
     {
         if (!TryGetUserId(out var userId))
@@ -32,6 +34,7 @@ public sealed class VitalMeasurementsController : ControllerBase
         var measurements =
             await _vitalMeasurementService.GetAllAsync(
                 userId,
+                pagination,
                 cancellationToken);
 
         return Ok(measurements);
@@ -63,8 +66,8 @@ public sealed class VitalMeasurementsController : ControllerBase
 
     [HttpPost]
     public async Task<ActionResult<VitalMeasurementResponse>> Create(
-    CreateVitalMeasurementRequest request,
-    CancellationToken cancellationToken)
+        CreateVitalMeasurementRequest request,
+        CancellationToken cancellationToken)
     {
         if (!TryGetUserId(out var userId))
         {
@@ -88,9 +91,9 @@ public sealed class VitalMeasurementsController : ControllerBase
 
     [HttpPut("{id:guid}")]
     public async Task<ActionResult<VitalMeasurementResponse>> Update(
-    Guid id,
-    UpdateVitalMeasurementRequest request,
-    CancellationToken cancellationToken)
+        Guid id,
+        UpdateVitalMeasurementRequest request,
+        CancellationToken cancellationToken)
     {
         if (!TryGetUserId(out var userId))
         {
@@ -140,7 +143,8 @@ public sealed class VitalMeasurementsController : ControllerBase
         out Guid userId)
     {
         var userIdValue =
-            User.FindFirstValue(ClaimTypes.NameIdentifier);
+            User.FindFirstValue(
+                ClaimTypes.NameIdentifier);
 
         return Guid.TryParse(
             userIdValue,
