@@ -1,8 +1,8 @@
 using MigraineDiary.Api.Contracts.Medications;
 using MigraineDiary.Api.Data;
 using MigraineDiary.Api.Entities;
-using Microsoft.EntityFrameworkCore;
 using MigraineDiary.Api.Exceptions;
+using Microsoft.EntityFrameworkCore;
 
 namespace MigraineDiary.Api.Services;
 
@@ -32,31 +32,36 @@ public sealed class MedicationService
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<MedicationResponse?> GetByIdAsync(
+        Guid userId,
+        Guid medicationId,
+        CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.Medications
+            .AsNoTracking()
+            .Where(x =>
+                x.Id == medicationId &&
+                x.UserId == userId)
+            .Select(x => new MedicationResponse
+            {
+                Id = x.Id,
+                Name = x.Name
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
     public async Task<MedicationResponse> CreateAsync(
         Guid userId,
         CreateMedicationRequest request,
         CancellationToken cancellationToken = default)
     {
-        var name = request.Name.Trim();
+        var name = NormalizeName(request.Name);
 
-        if (string.IsNullOrWhiteSpace(name))
-        {
-            throw new ArgumentException(
-                "Ќазвание препарата не может быть пустым.");
-        }
-
-        var alreadyExists = await _dbContext.Medications
-            .AnyAsync(
-                x =>
-                    x.UserId == userId &&
-                    x.Name == name,
-                cancellationToken);
-
-        if (alreadyExists)
-        {
-            throw new ConflictException(
-                 "ѕрепарат с таким названием уже существует.");
-        }
+        await EnsureNameIsAvailableAsync(
+            userId,
+            name,
+            excludedMedicationId: null,
+            cancellationToken);
 
         var medication = new Medication
         {
@@ -74,5 +79,122 @@ public sealed class MedicationService
             Id = medication.Id,
             Name = medication.Name
         };
+    }
+
+    public async Task<MedicationResponse?> UpdateAsync(
+        Guid userId,
+        Guid medicationId,
+        UpdateMedicationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var medication =
+            await _dbContext.Medications
+                .SingleOrDefaultAsync(
+                    x =>
+                        x.Id == medicationId &&
+                        x.UserId == userId,
+                    cancellationToken);
+
+        if (medication is null)
+        {
+            return null;
+        }
+
+        var name = NormalizeName(request.Name);
+
+        await EnsureNameIsAvailableAsync(
+            userId,
+            name,
+            medicationId,
+            cancellationToken);
+
+        medication.Name = name;
+
+        await _dbContext.SaveChangesAsync(
+            cancellationToken);
+
+        return new MedicationResponse
+        {
+            Id = medication.Id,
+            Name = medication.Name
+        };
+    }
+
+    public async Task<bool> DeleteAsync(
+        Guid userId,
+        Guid medicationId,
+        CancellationToken cancellationToken = default)
+    {
+        var medication =
+            await _dbContext.Medications
+                .SingleOrDefaultAsync(
+                    x =>
+                        x.Id == medicationId &&
+                        x.UserId == userId,
+                    cancellationToken);
+
+        if (medication is null)
+        {
+            return false;
+        }
+
+        var isUsed =
+            await _dbContext.AttackMedications
+                .AnyAsync(
+                    x =>
+                        x.MedicationId == medicationId,
+                    cancellationToken);
+
+        if (isUsed)
+        {
+            throw new ConflictException(
+                "Ќельз€ удалить препарат, который используетс€ в приступах.");
+        }
+
+        _dbContext.Medications.Remove(
+            medication);
+
+        await _dbContext.SaveChangesAsync(
+            cancellationToken);
+
+        return true;
+    }
+
+    private async Task EnsureNameIsAvailableAsync(
+        Guid userId,
+        string name,
+        Guid? excludedMedicationId,
+        CancellationToken cancellationToken)
+    {
+        var alreadyExists =
+            await _dbContext.Medications
+                .AnyAsync(
+                    x =>
+                        x.UserId == userId &&
+                        x.Name == name &&
+                        (!excludedMedicationId.HasValue ||
+                         x.Id != excludedMedicationId.Value),
+                    cancellationToken);
+
+        if (alreadyExists)
+        {
+            throw new ConflictException(
+                "ѕрепарат с таким названием уже существует.");
+        }
+    }
+
+    private static string NormalizeName(
+        string name)
+    {
+        var normalizedName = name.Trim();
+
+        if (string.IsNullOrWhiteSpace(
+            normalizedName))
+        {
+            throw new ArgumentException(
+                "Ќазвание препарата не может быть пустым.");
+        }
+
+        return normalizedName;
     }
 }
