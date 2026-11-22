@@ -116,6 +116,7 @@ public sealed class MigraineAttackService
 
         var query = _dbContext.MigraineAttacks
             .AsNoTracking()
+            .AsSplitQuery()
             .Where(x => x.UserId == userId);
 
         if (filter.From.HasValue)
@@ -362,6 +363,7 @@ public sealed class MigraineAttackService
     {
         return await _dbContext.MigraineAttacks
             .AsNoTracking()
+            .AsSplitQuery()
             .Where(x =>
                 x.Id == attackId &&
                 x.UserId == userId)
@@ -426,6 +428,7 @@ public sealed class MigraineAttackService
         CancellationToken cancellationToken = default)
     {
         var attack = await _dbContext.MigraineAttacks
+            .AsSplitQuery()
             .Include(x => x.Symptoms)
             .Include(x => x.Triggers)
             .SingleOrDefaultAsync(
