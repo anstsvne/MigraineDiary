@@ -56,7 +56,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     try {
-      const user = await getMe(accessToken.value)
+      const user = await getMe()
 
       currentUser.value = user
       userName.value = user.name

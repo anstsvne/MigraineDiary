@@ -25,11 +25,22 @@ async function handleLogin() {
       password: password.value,
     })
 
-    // Возвращаем пользователя на запрошенную страницу.
-    // Пока единственный защищённый маршрут — /profile.
     const redirect = route.query.redirect
 
-    const destination = redirect === '/profile' ? '/profile' : '/'
+    let destination = '/'
+
+    if (
+      typeof redirect === 'string' &&
+      redirect.startsWith('/') &&
+      !redirect.startsWith('//') &&
+      !redirect.includes('\\')
+    ) {
+      const target = router.resolve(redirect)
+
+      if (target.matched.length > 0 && target.meta.requiresAuth) {
+        destination = target.fullPath
+      }
+    }
 
     await router.replace(destination)
   } catch (error) {
