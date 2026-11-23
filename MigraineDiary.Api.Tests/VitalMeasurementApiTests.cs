@@ -252,6 +252,123 @@ public sealed class VitalMeasurementApiTests
     }
 
     [Fact]
+    public async Task Update_ForAnotherUser_ShouldReturnNotFound()
+    {
+        var ownerToken =
+            await CreateUserAndLoginAsync();
+
+        var anotherUserToken =
+            await CreateUserAndLoginAsync();
+
+        var created =
+            await CreateMeasurementAsync(
+                ownerToken,
+                120,
+                80,
+                70,
+                "Owner measurement");
+
+        var updateRequest =
+            new UpdateVitalMeasurementRequest
+            {
+                SystolicPressure = 150,
+                DiastolicPressure = 95,
+                Pulse = 90,
+
+                MeasuredAt =
+                    new DateTimeOffset(
+                        2026, 11, 22,
+                        12, 0, 0,
+                        TimeSpan.Zero),
+
+                Notes =
+                    "Unauthorized update"
+            };
+
+        var updateResponse =
+            await SendAuthorizedAsync(
+                HttpMethod.Put,
+                $"/api/vital-measurements/{created.Id}",
+                anotherUserToken,
+                updateRequest);
+
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            updateResponse.StatusCode);
+
+        var ownerResponse =
+            await SendAuthorizedAsync(
+                HttpMethod.Get,
+                $"/api/vital-measurements/{created.Id}",
+                ownerToken);
+
+        Assert.Equal(
+            HttpStatusCode.OK,
+            ownerResponse.StatusCode);
+
+        var unchanged =
+            await ownerResponse.Content
+                .ReadFromJsonAsync<
+                    VitalMeasurementResponse>();
+
+        Assert.NotNull(unchanged);
+
+        Assert.Equal(
+            120,
+            unchanged.SystolicPressure);
+
+        Assert.Equal(
+            80,
+            unchanged.DiastolicPressure);
+
+        Assert.Equal(
+            70,
+            unchanged.Pulse);
+
+        Assert.Equal(
+            "Owner measurement",
+            unchanged.Notes);
+    }
+
+    [Fact]
+    public async Task Delete_ForAnotherUser_ShouldReturnNotFound()
+    {
+        var ownerToken =
+            await CreateUserAndLoginAsync();
+
+        var anotherUserToken =
+            await CreateUserAndLoginAsync();
+
+        var created =
+            await CreateMeasurementAsync(
+                ownerToken,
+                125,
+                82,
+                72,
+                "Protected measurement");
+
+        var deleteResponse =
+            await SendAuthorizedAsync(
+                HttpMethod.Delete,
+                $"/api/vital-measurements/{created.Id}",
+                anotherUserToken);
+
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            deleteResponse.StatusCode);
+
+        var ownerResponse =
+            await SendAuthorizedAsync(
+                HttpMethod.Get,
+                $"/api/vital-measurements/{created.Id}",
+                ownerToken);
+
+        Assert.Equal(
+            HttpStatusCode.OK,
+            ownerResponse.StatusCode);
+    }
+
+    [Fact]
     public async Task GetAll_ShouldReturnOnlyCurrentUsersMeasurements()
     {
         var firstToken =

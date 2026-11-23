@@ -324,6 +324,145 @@ public sealed class MigraineAttackApiTests
     }
 
     [Fact]
+    public async Task Update_ForAnotherUsersAttack_ShouldReturnNotFound()
+    {
+        var ownerToken =
+            await CreateUserAndLoginAsync();
+
+        var anotherUserToken =
+            await CreateUserAndLoginAsync();
+
+        var created =
+            await CreateAttackAsync(
+                ownerToken,
+                CreateAttackRequest(
+                    new DateTimeOffset(
+                        2026, 11, 20,
+                        10, 0, 0,
+                        TimeSpan.Zero),
+
+                    new DateTimeOffset(
+                        2026, 11, 20,
+                        12, 0, 0,
+                        TimeSpan.Zero),
+
+                    6,
+                    PainLocation.LeftSide,
+                    "Owner attack"));
+
+        var updateRequest =
+            new UpdateMigraineAttackRequest
+            {
+                StartAt =
+                    new DateTimeOffset(
+                        2026, 11, 20,
+                        11, 0, 0,
+                        TimeSpan.Zero),
+
+                EndAt =
+                    new DateTimeOffset(
+                        2026, 11, 20,
+                        14, 0, 0,
+                        TimeSpan.Zero),
+
+                Intensity = 9,
+
+                PainLocation =
+                    PainLocation.RightSide,
+
+                Notes =
+                    "Unauthorized update"
+            };
+
+        var updateResponse =
+            await SendAuthorizedAsync(
+                HttpMethod.Put,
+                $"/api/migraine-attacks/{created.Id}",
+                anotherUserToken,
+                updateRequest);
+
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            updateResponse.StatusCode);
+
+        var ownerResponse =
+            await SendAuthorizedAsync(
+                HttpMethod.Get,
+                $"/api/migraine-attacks/{created.Id}",
+                ownerToken);
+
+        Assert.Equal(
+            HttpStatusCode.OK,
+            ownerResponse.StatusCode);
+
+        var unchanged =
+            await ReadJsonAsync<MigraineAttackResponse>(
+                ownerResponse);
+
+        Assert.NotNull(unchanged);
+
+        Assert.Equal(
+            6,
+            unchanged.Intensity);
+
+        Assert.Equal(
+            PainLocation.LeftSide,
+            unchanged.PainLocation);
+
+        Assert.Equal(
+            "Owner attack",
+            unchanged.Notes);
+    }
+
+    [Fact]
+    public async Task Delete_ForAnotherUsersAttack_ShouldReturnNotFound()
+    {
+        var ownerToken =
+            await CreateUserAndLoginAsync();
+
+        var anotherUserToken =
+            await CreateUserAndLoginAsync();
+
+        var created =
+            await CreateAttackAsync(
+                ownerToken,
+                CreateAttackRequest(
+                    new DateTimeOffset(
+                        2026, 11, 21,
+                        10, 0, 0,
+                        TimeSpan.Zero),
+
+                    new DateTimeOffset(
+                        2026, 11, 21,
+                        12, 0, 0,
+                        TimeSpan.Zero),
+
+                    7,
+                    PainLocation.Temples,
+                    "Protected attack"));
+
+        var deleteResponse =
+            await SendAuthorizedAsync(
+                HttpMethod.Delete,
+                $"/api/migraine-attacks/{created.Id}",
+                anotherUserToken);
+
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            deleteResponse.StatusCode);
+
+        var ownerResponse =
+            await SendAuthorizedAsync(
+                HttpMethod.Get,
+                $"/api/migraine-attacks/{created.Id}",
+                ownerToken);
+
+        Assert.Equal(
+            HttpStatusCode.OK,
+            ownerResponse.StatusCode);
+    }
+
+    [Fact]
     public async Task GetAll_ShouldReturnOnlyCurrentUsersAttacks()
     {
         var firstUserToken =
