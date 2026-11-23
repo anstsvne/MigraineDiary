@@ -71,6 +71,49 @@ builder.Services
                 RoleClaimType =
                     ClaimTypes.Role
             };
+
+        options.Events =
+            new JwtBearerEvents
+            {
+                OnTokenValidated =
+                    async context =>
+                    {
+                        var userIdValue =
+                            context.Principal?
+                                .FindFirstValue(
+                                    ClaimTypes.NameIdentifier);
+
+                        if (!Guid.TryParse(
+                            userIdValue,
+                            out var userId))
+                        {
+                            context.Fail(
+                                "Invalid user identifier.");
+
+                            return;
+                        }
+
+                        var dbContext =
+                            context.HttpContext
+                                .RequestServices
+                                .GetRequiredService<AppDbContext>();
+
+                        var userExists =
+                            await dbContext.Users
+                                .AsNoTracking()
+                                .AnyAsync(
+                                    user =>
+                                        user.Id == userId,
+                                    context.HttpContext
+                                        .RequestAborted);
+
+                        if (!userExists)
+                        {
+                            context.Fail(
+                                "User no longer exists.");
+                        }
+                    }
+            };
     });
 
 builder.Services.AddAuthorization();
