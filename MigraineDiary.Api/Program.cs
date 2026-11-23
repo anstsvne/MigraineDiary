@@ -1,34 +1,39 @@
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json.Serialization;
 using MigraineDiary.Api.Auth;
 using MigraineDiary.Api.Data;
 using MigraineDiary.Api.Entities;
+using MigraineDiary.Api.Exceptions;
 using MigraineDiary.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-using System.Text.Json.Serialization;
-using MigraineDiary.Api.Exceptions;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(
-        builder.Configuration.GetConnectionString("Postgres")));
+        builder.Configuration.GetConnectionString(
+            "Postgres")));
 
 builder.Services.Configure<JwtOptions>(
     builder.Configuration.GetSection(
         JwtOptions.SectionName));
 
-var jwt = builder.Configuration
-    .GetSection(JwtOptions.SectionName)
-    .Get<JwtOptions>()
+var jwt =
+    builder.Configuration
+        .GetSection(
+            JwtOptions.SectionName)
+        .Get<JwtOptions>()
     ?? throw new InvalidOperationException(
         "JWT configuration is required.");
 
-if (Encoding.UTF8.GetByteCount(jwt.Secret) < 32)
+if (Encoding.UTF8.GetByteCount(
+        jwt.Secret) < 32)
 {
     throw new InvalidOperationException(
         "Jwt:Secret must contain at least 32 bytes.");
@@ -49,6 +54,7 @@ builder.Services
                 ValidAudience = jwt.Audience,
 
                 ValidateIssuerSigningKey = true,
+
                 IssuerSigningKey =
                     new SymmetricSecurityKey(
                         Encoding.UTF8.GetBytes(
@@ -81,7 +87,10 @@ builder.Services.AddScoped<TriggerService>();
 builder.Services.AddScoped<MedicationService>();
 builder.Services.AddScoped<VitalMeasurementService>();
 builder.Services.AddScoped<DataExportService>();
-builder.Services.AddExceptionHandler<ApiExceptionHandler>();
+
+builder.Services.AddExceptionHandler<
+    ApiExceptionHandler>();
+
 builder.Services.AddProblemDetails();
 
 builder.Services
@@ -90,10 +99,47 @@ builder.Services
     {
         options.JsonSerializerOptions
             .Converters
-            .Add(new JsonStringEnumConverter());
+            .Add(
+                new JsonStringEnumConverter());
+    });
+
+builder.Services.Configure<
+    ApiBehaviorOptions>(options =>
+    {
+        options.InvalidModelStateResponseFactory =
+            context =>
+            {
+                var errors =
+                    context.ModelState
+                        .Where(x =>
+                            x.Value is not null &&
+                            x.Value.Errors.Count > 0)
+                        .ToDictionary(
+                            x => x.Key,
+
+                            x => x.Value!.Errors
+                                .Select(error =>
+                                    string.IsNullOrWhiteSpace(
+                                        error.ErrorMessage)
+                                        ? "Некорректное значение."
+                                        : error.ErrorMessage)
+                                .ToArray());
+
+                var response =
+                    ApiErrorResponseFactory.Create(
+                        context.HttpContext,
+                        StatusCodes.Status400BadRequest,
+                        "validation_error",
+                        "Запрос содержит некорректные данные.",
+                        errors);
+
+                return new BadRequestObjectResult(
+                    response);
+            };
     });
 
 builder.Services.AddEndpointsApiExplorer();
+
 builder.Services.AddSwaggerGen(options =>
 {
     options.AddSecurityDefinition(
@@ -101,11 +147,14 @@ builder.Services.AddSwaggerGen(options =>
         new OpenApiSecurityScheme
         {
             Name = "Authorization",
-            Type = SecuritySchemeType.Http,
+            Type =
+                SecuritySchemeType.Http,
             Scheme = "bearer",
             BearerFormat = "JWT",
-            In = ParameterLocation.Header,
-            Description = "������� JWT access token"
+            In =
+                ParameterLocation.Header,
+            Description =
+                "Введите JWT access token"
         });
 
     options.AddSecurityRequirement(
@@ -119,7 +168,9 @@ builder.Services.AddSwaggerGen(options =>
                         {
                             Type =
                                 ReferenceType.SecurityScheme,
-                            Id = "Bearer"
+
+                            Id =
+                                "Bearer"
                         }
                 },
                 Array.Empty<string>()
@@ -136,6 +187,25 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseExceptionHandler();
+
+app.UseStatusCodePages(
+    async context =>
+    {
+        var httpContext =
+            context.HttpContext;
+
+        var response =
+            ApiErrorResponseFactory
+                .CreateForStatus(
+                    httpContext,
+                    httpContext.Response.StatusCode);
+
+        await httpContext.Response
+            .WriteAsJsonAsync(
+                response,
+                httpContext.RequestAborted);
+    });
+
 app.UseHttpsRedirection();
 
 app.UseAuthentication();

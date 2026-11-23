@@ -1,5 +1,6 @@
 ﻿using System.Security.Claims;
 using MigraineDiary.Api.Contracts.Auth;
+using MigraineDiary.Api.Exceptions;
 using MigraineDiary.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -43,10 +44,15 @@ public sealed class AuthController : ControllerBase
 
         if (result is null)
         {
-            return Unauthorized(new
-            {
-                message = "Неверный email или пароль."
-            });
+            var error =
+                ApiErrorResponseFactory.Create(
+                    HttpContext,
+                    StatusCodes.Status401Unauthorized,
+                    "invalid_credentials",
+                    "Неверный email или пароль.");
+
+            return Unauthorized(
+                error);
         }
 
         return Ok(result);
@@ -57,7 +63,8 @@ public sealed class AuthController : ControllerBase
     public async Task<ActionResult<MeResponse>> Me(
         CancellationToken cancellationToken)
     {
-        if (!TryGetUserId(out var userId))
+        if (!TryGetUserId(
+            out var userId))
         {
             return Unauthorized();
         }
@@ -81,7 +88,8 @@ public sealed class AuthController : ControllerBase
         UpdateProfileRequest request,
         CancellationToken cancellationToken)
     {
-        if (!TryGetUserId(out var userId))
+        if (!TryGetUserId(
+            out var userId))
         {
             return Unauthorized();
         }
@@ -106,7 +114,8 @@ public sealed class AuthController : ControllerBase
         ChangePasswordRequest request,
         CancellationToken cancellationToken)
     {
-        if (!TryGetUserId(out var userId))
+        if (!TryGetUserId(
+            out var userId))
         {
             return Unauthorized();
         }
@@ -131,7 +140,8 @@ public sealed class AuthController : ControllerBase
         DeleteAccountRequest request,
         CancellationToken cancellationToken)
     {
-        if (!TryGetUserId(out var userId))
+        if (!TryGetUserId(
+            out var userId))
         {
             return Unauthorized();
         }

@@ -304,7 +304,7 @@ public sealed class DataExportService
             request.To.Value < request.From.Value)
         {
             throw new ArgumentException(
-                "Конец периода не может быть раньше начала периода.");
+                "РљРѕРЅРµС† РїРµСЂРёРѕРґР° РЅРµ РјРѕР¶РµС‚ Р±С‹С‚СЊ СЂР°РЅСЊС€Рµ РЅР°С‡Р°Р»Р° РїРµСЂРёРѕРґР°.");
         }
     }
 }

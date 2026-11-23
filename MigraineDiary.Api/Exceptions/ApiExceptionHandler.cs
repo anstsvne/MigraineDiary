@@ -23,22 +23,30 @@ public sealed class ApiExceptionHandler : IExceptionHandler
             return false;
         }
 
-        var statusCode = exception switch
-        {
-            ArgumentException =>
-                StatusCodes.Status400BadRequest,
+        var (statusCode, code, message) =
+            exception switch
+            {
+                ArgumentException =>
+                    (
+                        StatusCodes.Status400BadRequest,
+                        "invalid_request",
+                        exception.Message
+                    ),
 
-            ConflictException =>
-                StatusCodes.Status409Conflict,
+                ConflictException =>
+                    (
+                        StatusCodes.Status409Conflict,
+                        "conflict",
+                        exception.Message
+                    ),
 
-            _ =>
-                StatusCodes.Status500InternalServerError
-        };
-
-        var message = statusCode ==
-                      StatusCodes.Status500InternalServerError
-            ? "¬ÌÛÚÂÌÌˇˇ Ó¯Ë·Í‡ ÒÂ‚Â‡."
-            : exception.Message;
+                _ =>
+                    (
+                        StatusCodes.Status500InternalServerError,
+                        "internal_error",
+                        "–í–Ω—É—Ç—Ä–µ–Ω–Ω—è—è –æ—à–∏–±–∫–∞ —Å–µ—Ä–≤–µ—Ä–∞."
+                    )
+            };
 
         if (statusCode ==
             StatusCodes.Status500InternalServerError)
@@ -59,13 +67,18 @@ public sealed class ApiExceptionHandler : IExceptionHandler
                 statusCode);
         }
 
-        httpContext.Response.StatusCode = statusCode;
+        httpContext.Response.StatusCode =
+            statusCode;
+
+        var response =
+            ApiErrorResponseFactory.Create(
+                httpContext,
+                statusCode,
+                code,
+                message);
 
         await httpContext.Response.WriteAsJsonAsync(
-            new
-            {
-                message
-            },
+            response,
             cancellationToken);
 
         return true;
