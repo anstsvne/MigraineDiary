@@ -148,7 +148,7 @@ public sealed class MedicationService
         if (isUsed)
         {
             throw new ConflictException(
-                "Нельзя удалить препарат, который используется в приступах.");
+                "РќРµР»СЊР·СЏ СѓРґР°Р»РёС‚СЊ РїСЂРµРїР°СЂР°С‚, РєРѕС‚РѕСЂС‹Р№ РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ РІ РїСЂРёСЃС‚СѓРїР°С….");
         }
 
         _dbContext.Medications.Remove(
@@ -179,7 +179,7 @@ public sealed class MedicationService
         if (alreadyExists)
         {
             throw new ConflictException(
-                "Препарат с таким названием уже существует.");
+                "РџСЂРµРїР°СЂР°С‚ СЃ С‚Р°РєРёРј РЅР°Р·РІР°РЅРёРµРј СѓР¶Рµ СЃСѓС‰РµСЃС‚РІСѓРµС‚.");
         }
     }
 
@@ -192,7 +192,7 @@ public sealed class MedicationService
             normalizedName))
         {
             throw new ArgumentException(
-                "Название препарата не может быть пустым.");
+                "РќР°Р·РІР°РЅРёРµ РїСЂРµРїР°СЂР°С‚Р° РЅРµ РјРѕР¶РµС‚ Р±С‹С‚СЊ РїСѓСЃС‚С‹Рј.");
         }
 
         return normalizedName;

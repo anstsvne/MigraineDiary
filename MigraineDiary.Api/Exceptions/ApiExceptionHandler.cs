@@ -44,7 +44,7 @@ public sealed class ApiExceptionHandler : IExceptionHandler
                     (
                         StatusCodes.Status500InternalServerError,
                         "internal_error",
-                        "Внутренняя ошибка сервера."
+                        "Р’РЅСѓС‚СЂРµРЅРЅСЏСЏ РѕС€РёР±РєР° СЃРµСЂРІРµСЂР°."
                     )
             };
 

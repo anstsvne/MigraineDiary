@@ -121,7 +121,7 @@ builder.Services.Configure<
                                 .Select(error =>
                                     string.IsNullOrWhiteSpace(
                                         error.ErrorMessage)
-                                        ? "Некорректное значение."
+                                        ? "РќРµРєРѕСЂСЂРµРєС‚РЅРѕРµ Р·РЅР°С‡РµРЅРёРµ."
                                         : error.ErrorMessage)
                                 .ToArray());
 
@@ -130,7 +130,7 @@ builder.Services.Configure<
                         context.HttpContext,
                         StatusCodes.Status400BadRequest,
                         "validation_error",
-                        "Запрос содержит некорректные данные.",
+                        "Р—Р°РїСЂРѕСЃ СЃРѕРґРµСЂР¶РёС‚ РЅРµРєРѕСЂСЂРµРєС‚РЅС‹Рµ РґР°РЅРЅС‹Рµ.",
                         errors);
 
                 return new BadRequestObjectResult(
@@ -154,7 +154,7 @@ builder.Services.AddSwaggerGen(options =>
             In =
                 ParameterLocation.Header,
             Description =
-                "Введите JWT access token"
+                "Р’РІРµРґРёС‚Рµ JWT access token"
         });
 
     options.AddSecurityRequirement(
