@@ -1,9 +1,13 @@
 ﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using MigraineDiary.Api.Contracts.Auth;
 using MigraineDiary.Api.Contracts.Common;
+using MigraineDiary.Api.Exceptions;
 using MigraineDiary.Api.Tests.Infrastructure;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace MigraineDiary.Api.Tests;
@@ -341,6 +345,75 @@ public sealed class ErrorHandlingApiTests
         Assert.False(
             string.IsNullOrWhiteSpace(
                 error.TraceId));
+    }
+
+    [Fact]
+    public async Task UnexpectedException_ShouldReturnSafeInternalError()
+    {
+        var httpContext =
+            new DefaultHttpContext();
+
+        httpContext.TraceIdentifier =
+            "internal-error-test";
+
+        httpContext.Response.Body =
+            new MemoryStream();
+
+        var handler =
+            new ApiExceptionHandler(
+                NullLogger<ApiExceptionHandler>.Instance);
+
+        const string secretMessage =
+            "SECRET_INTERNAL_DETAILS";
+
+        var handled =
+            await handler.TryHandleAsync(
+                httpContext,
+                new InvalidOperationException(
+                    secretMessage),
+                CancellationToken.None);
+
+        Assert.True(
+            handled);
+
+        Assert.Equal(
+            StatusCodes.Status500InternalServerError,
+            httpContext.Response.StatusCode);
+
+        httpContext.Response.Body.Position =
+            0;
+
+        var error =
+            await JsonSerializer.DeserializeAsync<
+                ApiErrorResponse>(
+                    httpContext.Response.Body,
+                    new JsonSerializerOptions(
+                        JsonSerializerDefaults.Web));
+
+        Assert.NotNull(error);
+
+        Assert.Equal(
+            500,
+            error.Status);
+
+        Assert.Equal(
+            "internal_error",
+            error.Code);
+
+        Assert.Equal(
+            "Внутренняя ошибка сервера.",
+            error.Message);
+
+        Assert.DoesNotContain(
+            secretMessage,
+            error.Message);
+
+        Assert.Equal(
+            "internal-error-test",
+            error.TraceId);
+
+        Assert.Null(
+            error.Errors);
     }
 
     private async Task<string>
