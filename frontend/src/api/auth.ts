@@ -1,4 +1,3 @@
-
 import { apiRequest } from './http'
 
 export interface LoginRequest {
@@ -38,6 +37,7 @@ export interface MeResponse {
 export function login(data: LoginRequest) {
   return apiRequest<LoginResponse>('/auth/login', {
     method: 'POST',
+    auth: false,
     body: JSON.stringify(data),
   })
 }
@@ -45,14 +45,11 @@ export function login(data: LoginRequest) {
 export function register(data: RegisterRequest) {
   return apiRequest<RegisterResponse>('/auth/register', {
     method: 'POST',
+    auth: false,
     body: JSON.stringify(data),
   })
 }
 
-export function getMe(token: string) {
-  return apiRequest<MeResponse>('/auth/me', {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  })
+export function getMe() {
+  return apiRequest<MeResponse>('/auth/me')
 }
