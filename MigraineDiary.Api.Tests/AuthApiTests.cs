@@ -674,6 +674,60 @@ public sealed class AuthApiTests
             meResponse.StatusCode);
     }
 
+    [Fact]
+    public async Task DeletedUserToken_ShouldNotAllowCreatingAttack()
+    {
+        var session =
+            await CreateUserAndLoginAsync();
+
+        var deleteResponse =
+            await SendAuthorizedAsync(
+                HttpMethod.Delete,
+                "/api/auth/me",
+                session.Token,
+                new DeleteAccountRequest
+                {
+                    Password =
+                        session.Password
+                });
+
+        Assert.Equal(
+            HttpStatusCode.NoContent,
+            deleteResponse.StatusCode);
+
+        var attackResponse =
+            await SendAuthorizedAsync(
+                HttpMethod.Post,
+                "/api/migraine-attacks",
+                session.Token,
+                new CreateMigraineAttackRequest
+                {
+                    StartAt =
+                        new DateTimeOffset(
+                            2026, 11, 23,
+                            10, 0, 0,
+                            TimeSpan.Zero),
+
+                    EndAt =
+                        new DateTimeOffset(
+                            2026, 11, 23,
+                            12, 0, 0,
+                            TimeSpan.Zero),
+
+                    Intensity = 6,
+
+                    PainLocation =
+                        PainLocation.LeftSide,
+
+                    Notes =
+                        "Deleted user stale token test"
+                });
+
+        Assert.Equal(
+            HttpStatusCode.Unauthorized,
+            attackResponse.StatusCode);
+    }
+
     private async Task<UserSession>
         CreateUserAndLoginAsync(
             string password = "Password123")
