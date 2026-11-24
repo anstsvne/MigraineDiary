@@ -45,7 +45,7 @@ function logout() {
   <main class="profile-page">
     <div class="profile-container">
       <header class="profile-header">
-        <RouterLink to="/">← На главную</RouterLink>
+        <RouterLink to="/dashboard">← К обзору</RouterLink>
         <h1>Личный кабинет</h1>
       </header>
 
@@ -86,8 +86,8 @@ function logout() {
 
 <style scoped>
 .profile-page {
-  min-height: 100vh;
-  padding: 50px 20px;
+  min-height: auto;
+  padding: 0;
 }
 
 .profile-container {

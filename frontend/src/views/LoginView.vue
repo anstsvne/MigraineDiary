@@ -27,7 +27,7 @@ async function handleLogin() {
 
     const redirect = route.query.redirect
 
-    let destination = '/'
+    let destination = '/dashboard'
 
     if (
       typeof redirect === 'string' &&
