@@ -6,8 +6,14 @@ import AppLayout from '@/layouts/AppLayout.vue'
 import HomeView from '@/views/HomeView.vue'
 import LoginView from '@/views/LoginView.vue'
 import RegisterView from '@/views/RegisterView.vue'
+
 import DashboardView from '@/views/DashboardView.vue'
 import ProfileView from '@/views/ProfileView.vue'
+
+import MigraineAttacksView from '@/views/MigraineAttacksView.vue'
+import MigraineAttackCreateView from '@/views/MigraineAttackCreateView.vue'
+import MigraineAttackDetailsView from '@/views/MigraineAttackDetailsView.vue'
+import MigraineAttackEditView from '@/views/MigraineAttackEditView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -45,6 +51,26 @@ const router = createRouter({
           path: '/profile',
           name: 'profile',
           component: ProfileView,
+        },
+        {
+          path: '/migraine-attacks',
+          name: 'migraine-attacks',
+          component: MigraineAttacksView,
+        },
+        {
+          path: '/migraine-attacks/new',
+          name: 'migraine-attack-create',
+          component: MigraineAttackCreateView,
+        },
+        {
+          path: '/migraine-attacks/:id/edit',
+          name: 'migraine-attack-edit',
+          component: MigraineAttackEditView,
+        },
+        {
+          path: '/migraine-attacks/:id',
+          name: 'migraine-attack-details',
+          component: MigraineAttackDetailsView,
         },
       ],
     },
