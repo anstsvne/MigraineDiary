@@ -22,10 +22,14 @@ const emit = defineEmits<{
         Обзор
       </RouterLink>
 
-      <span class="nav-link disabled">
+      <RouterLink
+        to="/migraine-attacks"
+        class="nav-link"
+        active-class="active"
+        @click="emit('close')"
+      >
         Дневник приступов
-        <small>Скоро</small>
-      </span>
+      </RouterLink>
 
       <span class="nav-link disabled">
         Давление и пульс
