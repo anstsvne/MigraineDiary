@@ -15,6 +15,10 @@ import MigraineAttackCreateView from '@/views/MigraineAttackCreateView.vue'
 import MigraineAttackDetailsView from '@/views/MigraineAttackDetailsView.vue'
 import MigraineAttackEditView from '@/views/MigraineAttackEditView.vue'
 
+import VitalMeasurementsView from '@/views/VitalMeasurementsView.vue'
+import VitalMeasurementCreateView from '@/views/VitalMeasurementCreateView.vue'
+import VitalMeasurementEditView from '@/views/VitalMeasurementEditView.vue'
+
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
 
@@ -71,6 +75,21 @@ const router = createRouter({
           path: '/migraine-attacks/:id',
           name: 'migraine-attack-details',
           component: MigraineAttackDetailsView,
+        },
+        {
+          path: '/vital-measurements',
+          name: 'vital-measurements',
+          component: VitalMeasurementsView,
+        },
+        {
+          path: '/vital-measurements/new',
+          name: 'vital-measurement-create',
+          component: VitalMeasurementCreateView,
+        },
+        {
+          path: '/vital-measurements/:id/edit',
+          name: 'vital-measurement-edit',
+          component: VitalMeasurementEditView,
         },
       ],
     },
