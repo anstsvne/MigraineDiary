@@ -31,10 +31,14 @@ const emit = defineEmits<{
         Дневник приступов
       </RouterLink>
 
-      <span class="nav-link disabled">
+      <RouterLink
+        to="/vital-measurements"
+        class="nav-link"
+        active-class="active"
+        @click="emit('close')"
+      >
         Давление и пульс
-        <small>Скоро</small>
-      </span>
+      </RouterLink>
 
       <span class="nav-link disabled">
         Препараты
