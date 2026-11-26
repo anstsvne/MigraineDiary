@@ -8,9 +8,13 @@ public sealed class MigraineAttack
 
     public Guid UserId { get; set; }
 
-    public DateTimeOffset StartAt { get; set; }
+    public DateOnly StartDate { get; set; }
 
-    public DateTimeOffset EndAt { get; set; }
+    public DateOnly EndDate { get; set; }
+
+    public DateTimeOffset? StartAt { get; set; }
+
+    public DateTimeOffset? EndAt { get; set; }
 
     public int Intensity { get; set; }
 
@@ -26,11 +30,11 @@ public sealed class MigraineAttack
     public User User { get; set; } = null!;
 
     public ICollection<AttackSymptom> Symptoms { get; set; }
-    = new List<AttackSymptom>();
+        = new List<AttackSymptom>();
 
     public ICollection<AttackTrigger> Triggers { get; set; }
-    = new List<AttackTrigger>();
+        = new List<AttackTrigger>();
 
     public ICollection<AttackMedication> Medications { get; set; }
-    = new List<AttackMedication>();
+        = new List<AttackMedication>();
 }

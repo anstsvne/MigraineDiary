@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -892,6 +892,370 @@ public sealed class MigraineAttackApiTests
         Assert.Equal(
             HttpStatusCode.BadRequest,
             response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task CalendarPeriod_ShouldRoundTripOptionalTimes(
+        bool hasStartTime,
+        bool hasEndTime)
+    {
+        var token = await CreateUserAndLoginAsync();
+        var startDate = new DateOnly(2026, 11, 10);
+        var endDate = new DateOnly(2026, 11, 11);
+        DateTimeOffset? startAt = hasStartTime
+            ? new DateTimeOffset(2026, 11, 10, 8, 0, 0, TimeSpan.FromHours(7))
+            : null;
+        DateTimeOffset? endAt = hasEndTime
+            ? new DateTimeOffset(2026, 11, 11, 10, 0, 0, TimeSpan.FromHours(7))
+            : null;
+
+        var created = await CreateAttackAsync(token, new CreateMigraineAttackRequest
+        {
+            StartDate = startDate,
+            EndDate = endDate,
+            StartAt = startAt,
+            EndAt = endAt,
+            Intensity = 6,
+            PainLocation = PainLocation.LeftSide
+        });
+
+        using var response = await SendAuthorizedAsync(
+            HttpMethod.Get, $"/api/migraine-attacks/{created.Id}", token);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var loaded = await ReadJsonAsync<MigraineAttackResponse>(response);
+        Assert.NotNull(loaded);
+
+        foreach (var attack in new[] { created, loaded! })
+        {
+            Assert.Equal(startDate, attack.StartDate);
+            Assert.Equal(endDate, attack.EndDate);
+            Assert.Equal(2, attack.DurationDays);
+            Assert.Equal(startAt?.ToUniversalTime(), attack.StartAt);
+            Assert.Equal(endAt?.ToUniversalTime(), attack.EndAt);
+            if (hasStartTime && hasEndTime)
+                Assert.Equal(1560d, attack.DurationMinutes);
+            else
+                Assert.Null(attack.DurationMinutes);
+        }
+    }
+
+    [Fact]
+    public async Task LegacyCreate_ShouldDeriveCalendarDatesFromUtc()
+    {
+        var token = await CreateUserAndLoginAsync();
+        var start = new DateTimeOffset(
+            2026, 11, 10, 1, 0, 0, TimeSpan.FromHours(7));
+        var end = start.AddHours(8);
+
+        var created = await CreateAttackAsync(token,
+            CreateAttackRequest(start, end, 6, PainLocation.LeftSide, "Legacy"));
+
+        Assert.Equal(new DateOnly(2026, 11, 9), created.StartDate);
+        Assert.Equal(new DateOnly(2026, 11, 10), created.EndDate);
+        Assert.Equal(start.ToUniversalTime(), created.StartAt);
+        Assert.Equal(end.ToUniversalTime(), created.EndAt);
+        Assert.Equal(480d, created.DurationMinutes);
+        Assert.Equal(2, created.DurationDays);
+    }
+
+    [Fact]
+    public async Task CalendarCreate_ShouldKeepExplicitDatesAcrossUtcMidnight()
+    {
+        var token = await CreateUserAndLoginAsync();
+        var date = new DateOnly(2026, 11, 10);
+        var start = new DateTimeOffset(
+            2026, 11, 10, 1, 0, 0, TimeSpan.FromHours(7));
+        var end = start.AddHours(2);
+
+        var created = await CreateAttackAsync(token, new CreateMigraineAttackRequest
+        {
+            StartDate = date,
+            EndDate = date,
+            StartAt = start,
+            EndAt = end,
+            Intensity = 5,
+            PainLocation = PainLocation.LeftSide
+        });
+
+        Assert.Equal(date, created.StartDate);
+        Assert.Equal(date, created.EndDate);
+        Assert.Equal(1, created.DurationDays);
+        Assert.Equal(start.ToUniversalTime(), created.StartAt);
+        Assert.Equal(120d, created.DurationMinutes);
+    }
+
+    [Fact]
+    public async Task CalendarUpdate_ShouldClearAndRestoreExactTimes()
+    {
+        var token = await CreateUserAndLoginAsync();
+        var date = new DateOnly(2026, 11, 12);
+        var start = new DateTimeOffset(2026, 11, 12, 8, 0, 0, TimeSpan.Zero);
+        var end = start.AddHours(2);
+        var created = await CreateAttackAsync(token,
+            CreateAttackRequest(start, end, 5, PainLocation.LeftSide, "Update"));
+
+        using var clearedResponse = await SendAuthorizedAsync(
+            HttpMethod.Put, $"/api/migraine-attacks/{created.Id}", token,
+            new UpdateMigraineAttackRequest
+            {
+                StartDate = date,
+                EndDate = date.AddDays(1),
+                Intensity = 7,
+                PainLocation = PainLocation.LeftSide
+            });
+        Assert.Equal(HttpStatusCode.OK, clearedResponse.StatusCode);
+        var cleared = await ReadJsonAsync<MigraineAttackResponse>(clearedResponse);
+        Assert.NotNull(cleared);
+        Assert.Equal(created.Id, cleared.Id);
+        Assert.Equal(2, cleared.DurationDays);
+        Assert.Null(cleared.StartAt);
+        Assert.Null(cleared.EndAt);
+        Assert.Null(cleared.DurationMinutes);
+
+        using var readResponse = await SendAuthorizedAsync(
+            HttpMethod.Get, $"/api/migraine-attacks/{created.Id}", token);
+        Assert.Equal(HttpStatusCode.OK, readResponse.StatusCode);
+        var stored = await ReadJsonAsync<MigraineAttackResponse>(readResponse);
+        Assert.NotNull(stored);
+        Assert.Null(stored.StartAt);
+        Assert.Null(stored.EndAt);
+        Assert.Equal(date.AddDays(1), stored.EndDate);
+
+        using var restoredResponse = await SendAuthorizedAsync(
+            HttpMethod.Put, $"/api/migraine-attacks/{created.Id}", token,
+            new UpdateMigraineAttackRequest
+            {
+                StartDate = date,
+                EndDate = date,
+                StartAt = start,
+                EndAt = end,
+                Intensity = 7,
+                PainLocation = PainLocation.LeftSide
+            });
+        Assert.Equal(HttpStatusCode.OK, restoredResponse.StatusCode);
+        var restored = await ReadJsonAsync<MigraineAttackResponse>(restoredResponse);
+        Assert.NotNull(restored);
+        Assert.Equal(created.Id, restored.Id);
+        Assert.Equal(120d, restored.DurationMinutes);
+        Assert.Equal(1, restored.DurationDays);
+    }
+
+    [Fact]
+    public async Task CalendarFilter_ShouldIncludeOverlapsAndSeparateSameDayAttacks()
+    {
+        var token = await CreateUserAndLoginAsync();
+        var otherToken = await CreateUserAndLoginAsync();
+        var day = new DateOnly(2026, 11, 15);
+
+        var crossingStart = await CreateAttackAsync(token,
+            CalendarRequest(day.AddDays(-2), day));
+        var crossingEnd = await CreateAttackAsync(token,
+            CalendarRequest(day, day.AddDays(2)));
+        var sameDay1 = await CreateAttackAsync(token, CalendarRequest(day, day));
+        var sameDay2 = await CreateAttackAsync(token, CalendarRequest(day, day));
+        await CreateAttackAsync(token,
+            CalendarRequest(day.AddDays(-2), day.AddDays(-1)));
+        await CreateAttackAsync(token,
+            CalendarRequest(day.AddDays(1), day.AddDays(2)));
+        await CreateAttackAsync(otherToken, CalendarRequest(day, day));
+
+        Assert.NotEqual(sameDay1.Id, sameDay2.Id);
+
+        const string period = "?fromDate=2026-11-15&toDate=2026-11-15";
+        using var response = await SendAuthorizedAsync(
+            HttpMethod.Get, "/api/migraine-attacks" + period, token);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var page = await ReadJsonAsync<PagedResponse<MigraineAttackResponse>>(response);
+        Assert.NotNull(page);
+        Assert.Equal(4, page.TotalCount);
+        Assert.Equal(4, page.Items.Count);
+        Assert.Contains(page.Items, x => x.Id == crossingStart.Id);
+        Assert.Contains(page.Items, x => x.Id == crossingEnd.Id);
+        Assert.Contains(page.Items, x => x.Id == sameDay1.Id);
+        Assert.Contains(page.Items, x => x.Id == sameDay2.Id);
+
+        using var statsResponse = await SendAuthorizedAsync(
+            HttpMethod.Get, "/api/migraine-attacks/statistics" + period, token);
+        Assert.Equal(HttpStatusCode.OK, statsResponse.StatusCode);
+        var statistics = await ReadJsonAsync<MigraineAttackStatisticsResponse>(statsResponse);
+        Assert.NotNull(statistics);
+        Assert.Equal(4, statistics.AttackCount);
+        Assert.Null(statistics.AverageDurationMinutes);
+    }
+
+    [Fact]
+    public async Task LegacyTimestampFilter_ShouldKeepStartTimeSemantics()
+    {
+        var token = await CreateUserAndLoginAsync();
+        var day = new DateOnly(2026, 11, 16);
+        var early = new DateTimeOffset(2026, 11, 16, 10, 0, 0, TimeSpan.Zero);
+        var late = early.AddHours(4);
+
+        await CreateAttackAsync(token, CreateAttackRequest(
+            early, early.AddHours(5), 4, PainLocation.LeftSide, "Earlier start"));
+        var matching = await CreateAttackAsync(token, CreateAttackRequest(
+            late, late.AddHours(1), 8, PainLocation.LeftSide, "Matching"));
+        var unknown = await CreateAttackAsync(token, CalendarRequest(day, day));
+        await CreateAttackAsync(token, CalendarRequest(day.AddDays(-1), day));
+
+        const string period = "?from=2026-11-16T12:00:00Z&to=2026-11-16T16:00:00Z";
+        using var response = await SendAuthorizedAsync(
+            HttpMethod.Get, "/api/migraine-attacks" + period, token);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var page = await ReadJsonAsync<PagedResponse<MigraineAttackResponse>>(response);
+        Assert.NotNull(page);
+        Assert.Equal(2, page.TotalCount);
+        Assert.Equal(2, page.Items.Count);
+        Assert.Contains(page.Items, x => x.Id == matching.Id);
+        Assert.Contains(page.Items, x => x.Id == unknown.Id);
+
+        using var statsResponse = await SendAuthorizedAsync(
+            HttpMethod.Get, "/api/migraine-attacks/statistics" + period, token);
+        Assert.Equal(HttpStatusCode.OK, statsResponse.StatusCode);
+        var statistics = await ReadJsonAsync<MigraineAttackStatisticsResponse>(statsResponse);
+        Assert.NotNull(statistics);
+        Assert.Equal(2, statistics.AttackCount);
+        Assert.Equal(60d, statistics.AverageDurationMinutes);
+    }
+
+    [Fact]
+    public async Task Statistics_ShouldExcludeUnknownDurationsButCountAllAttacks()
+    {
+        var token = await CreateUserAndLoginAsync();
+        var day = new DateOnly(2026, 11, 17);
+        var start = new DateTimeOffset(2026, 11, 17, 8, 0, 0, TimeSpan.Zero);
+
+        await CreateAttackAsync(token, CreateAttackRequest(
+            start, start.AddHours(2), 4, PainLocation.LeftSide, "120 min"));
+        await CreateAttackAsync(token, CreateAttackRequest(
+            start.AddHours(3), start.AddHours(7), 8, PainLocation.LeftSide, "240 min"));
+        await CreateAttackAsync(token, CalendarRequest(day, day, intensity: 6));
+        await CreateAttackAsync(token, new CreateMigraineAttackRequest
+        {
+            StartDate = day,
+            EndDate = day,
+            StartAt = start,
+            Intensity = 2,
+            PainLocation = PainLocation.LeftSide
+        });
+
+        using var response = await SendAuthorizedAsync(
+            HttpMethod.Get, "/api/migraine-attacks/statistics", token);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var statistics = await ReadJsonAsync<MigraineAttackStatisticsResponse>(response);
+        Assert.NotNull(statistics);
+        Assert.Equal(4, statistics.AttackCount);
+        Assert.Equal(5d, statistics.AverageIntensity);
+        Assert.Equal(180d, statistics.AverageDurationMinutes);
+    }
+
+    [Theory]
+    [InlineData("/api/migraine-attacks")]
+    [InlineData("/api/migraine-attacks/statistics")]
+    public async Task MixedFilterModes_ShouldReturnBadRequest(string endpoint)
+    {
+        var token = await CreateUserAndLoginAsync();
+        using var response = await SendAuthorizedAsync(
+            HttpMethod.Get,
+            endpoint + "?from=2026-11-01T00:00:00Z&toDate=2026-11-30",
+            token);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("/api/migraine-attacks")]
+    [InlineData("/api/migraine-attacks/statistics")]
+    public async Task ReversedCalendarFilter_ShouldReturnBadRequest(string endpoint)
+    {
+        var token = await CreateUserAndLoginAsync();
+        using var response = await SendAuthorizedAsync(
+            HttpMethod.Get,
+            endpoint + "?fromDate=2026-11-30&toDate=2026-11-01",
+            token);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task CalendarCreate_WithMissingOrInvalidPeriod_ShouldReturnBadRequest()
+    {
+        var token = await CreateUserAndLoginAsync();
+        var day = new DateOnly(2026, 11, 18);
+        var time = new DateTimeOffset(2026, 11, 18, 10, 0, 0, TimeSpan.Zero);
+        var requests = new[]
+        {
+            new CreateMigraineAttackRequest
+            {
+                Intensity = 5, PainLocation = PainLocation.LeftSide
+            },
+            new CreateMigraineAttackRequest
+            {
+                StartDate = day, StartAt = time, EndAt = time.AddHours(1),
+                Intensity = 5, PainLocation = PainLocation.LeftSide
+            },
+            CalendarRequest(day, day.AddDays(-1)),
+            new CreateMigraineAttackRequest
+            {
+                StartDate = day, EndDate = day, StartAt = time, EndAt = time.AddHours(-1),
+                Intensity = 5, PainLocation = PainLocation.LeftSide
+            }
+        };
+
+        foreach (var request in requests)
+        {
+            using var response = await SendAuthorizedAsync(
+                HttpMethod.Post, "/api/migraine-attacks", token, request);
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        }
+
+        using var listResponse = await SendAuthorizedAsync(
+            HttpMethod.Get, "/api/migraine-attacks", token);
+        Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
+        var page = await ReadJsonAsync<PagedResponse<MigraineAttackResponse>>(listResponse);
+        Assert.NotNull(page);
+        Assert.Equal(0, page.TotalCount);
+    }
+
+    [Fact]
+    public async Task CalendarList_ShouldSortKnownStartTimesBeforeUnknownTimes()
+    {
+        var token = await CreateUserAndLoginAsync();
+        var date = new DateOnly(2026, 11, 19);
+        var early = new DateTimeOffset(2026, 11, 19, 8, 0, 0, TimeSpan.Zero);
+        var late = early.AddHours(4);
+
+        var newest = await CreateAttackAsync(token, CreateAttackRequest(
+            late, late.AddHours(1), 6, PainLocation.LeftSide, "Later start"));
+        var oldest = await CreateAttackAsync(token, CreateAttackRequest(
+            early, early.AddHours(1), 5, PainLocation.LeftSide, "Earlier start"));
+        var unknown = await CreateAttackAsync(token, CalendarRequest(date, date));
+
+        using var response = await SendAuthorizedAsync(
+            HttpMethod.Get, "/api/migraine-attacks?fromDate=2026-11-19&toDate=2026-11-19", token);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var page = await ReadJsonAsync<PagedResponse<MigraineAttackResponse>>(response);
+        Assert.NotNull(page);
+        Assert.Equal(3, page.TotalCount);
+        Assert.Equal(newest.Id, page.Items[0].Id);
+        Assert.Equal(oldest.Id, page.Items[1].Id);
+        Assert.Equal(unknown.Id, page.Items[2].Id);
+    }
+
+    private static CreateMigraineAttackRequest CalendarRequest(
+        DateOnly start,
+        DateOnly end,
+        int intensity = 5)
+    {
+        return new CreateMigraineAttackRequest
+        {
+            StartDate = start,
+            EndDate = end,
+            Intensity = intensity,
+            PainLocation = PainLocation.LeftSide
+        };
     }
 
     private async Task<MigraineAttackResponse>

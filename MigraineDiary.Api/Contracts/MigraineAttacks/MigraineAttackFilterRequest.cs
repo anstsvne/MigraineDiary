@@ -7,9 +7,15 @@ namespace MigraineDiary.Api.Contracts.MigraineAttacks;
 public sealed class MigraineAttackFilterRequest
     : PaginationRequest
 {
+    // Legacy timestamp filters.
     public DateTimeOffset? From { get; init; }
 
     public DateTimeOffset? To { get; init; }
+
+    // Calendar filters (inclusive date range).
+    public DateOnly? FromDate { get; init; }
+
+    public DateOnly? ToDate { get; init; }
 
     [Range(1, 10)]
     public int? MinIntensity { get; init; }

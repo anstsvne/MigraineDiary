@@ -6,7 +6,7 @@ public sealed class MigraineAttackStatisticsResponse
 
     public double AverageIntensity { get; init; }
 
-    public double AverageDurationMinutes { get; init; }
+    public double? AverageDurationMinutes { get; init; }
 
     public IReadOnlyList<StatisticsItemResponse> Symptoms { get; init; }
         = Array.Empty<StatisticsItemResponse>();

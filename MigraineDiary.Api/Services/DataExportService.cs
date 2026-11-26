@@ -1,3 +1,4 @@
+
 using System.Globalization;
 using System.IO.Compression;
 using System.Text;
@@ -33,26 +34,35 @@ public sealed class DataExportService
 
         if (request.From.HasValue)
         {
-            var from = request.From.Value.ToUniversalTime();
+            var fromUtc = request.From.Value.ToUniversalTime();
+
+            // Для приступов используем календарную дату
+            // с учетом исходного смещения запроса.
+            var fromDate = DateOnly.FromDateTime(
+                request.From.Value.DateTime);
 
             attacksQuery = attacksQuery.Where(x =>
-                x.StartAt >= from);
+                x.EndDate >= fromDate);
 
+            // Измерения продолжаем фильтровать по точному времени.
             vitalMeasurementsQuery =
                 vitalMeasurementsQuery.Where(x =>
-                    x.MeasuredAt >= from);
+                    x.MeasuredAt >= fromUtc);
         }
 
         if (request.To.HasValue)
         {
-            var to = request.To.Value.ToUniversalTime();
+            var toUtc = request.To.Value.ToUniversalTime();
+
+            var toDate = DateOnly.FromDateTime(
+                request.To.Value.DateTime);
 
             attacksQuery = attacksQuery.Where(x =>
-                x.StartAt <= to);
+                x.StartDate <= toDate);
 
             vitalMeasurementsQuery =
                 vitalMeasurementsQuery.Where(x =>
-                    x.MeasuredAt <= to);
+                    x.MeasuredAt <= toUtc);
         }
 
         var attacks = await attacksQuery
@@ -63,7 +73,9 @@ public sealed class DataExportService
                 .ThenInclude(x => x.Trigger)
             .Include(x => x.Medications)
                 .ThenInclude(x => x.Medication)
-            .OrderBy(x => x.StartAt)
+            .OrderBy(x => x.StartDate)
+            .ThenBy(x => x.StartAt)
+            .ThenBy(x => x.Id)
             .ToListAsync(cancellationToken);
 
         var vitalMeasurements = await vitalMeasurementsQuery
@@ -71,6 +83,7 @@ public sealed class DataExportService
             .ToListAsync(cancellationToken);
 
         var attacksCsv = BuildAttacksCsv(attacks);
+
         var vitalMeasurementsCsv =
             BuildVitalMeasurementsCsv(vitalMeasurements);
 
@@ -105,6 +118,8 @@ public sealed class DataExportService
         AppendCsvRow(
             builder,
             "Id",
+            "StartDate",
+            "EndDate",
             "StartAtUtc",
             "EndAtUtc",
             "DurationMinutes",
@@ -144,24 +159,49 @@ public sealed class DataExportService
                     .ThenBy(x => x.Medication.Name)
                     .Select(BuildMedicationItem));
 
+            double? durationMinutes = null;
+
+            if (attack.StartAt.HasValue &&
+                attack.EndAt.HasValue)
+            {
+                durationMinutes = (
+                    attack.EndAt.Value -
+                    attack.StartAt.Value
+                ).TotalMinutes;
+            }
+
             AppendCsvRow(
                 builder,
                 attack.Id.ToString(),
-                attack.StartAt.ToUniversalTime().ToString("O"),
-                attack.EndAt.ToUniversalTime().ToString("O"),
-                (attack.EndAt - attack.StartAt)
-                    .TotalMinutes
-                    .ToString(
-                        "0.##",
-                        CultureInfo.InvariantCulture),
+
+                attack.StartDate.ToString(
+                    "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture),
+
+                attack.EndDate.ToString(
+                    "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture),
+
+                attack.StartAt?.ToUniversalTime()
+                    .ToString("O"),
+
+                attack.EndAt?.ToUniversalTime()
+                    .ToString("O"),
+
+                durationMinutes?.ToString(
+                    "0.##",
+                    CultureInfo.InvariantCulture),
+
                 attack.Intensity.ToString(
                     CultureInfo.InvariantCulture),
+
                 attack.PainLocation.ToString(),
                 attack.PainLocationDescription,
                 attack.Notes,
                 symptoms,
                 triggers,
                 medications,
+
                 attack.CreatedAt
                     .ToUniversalTime()
                     .ToString("O"));
@@ -190,16 +230,22 @@ public sealed class DataExportService
             AppendCsvRow(
                 builder,
                 measurement.Id.ToString(),
+
                 measurement.SystolicPressure.ToString(
                     CultureInfo.InvariantCulture),
+
                 measurement.DiastolicPressure.ToString(
                     CultureInfo.InvariantCulture),
+
                 measurement.Pulse.ToString(
                     CultureInfo.InvariantCulture),
+
                 measurement.MeasuredAt
                     .ToUniversalTime()
                     .ToString("O"),
+
                 measurement.Notes,
+
                 measurement.CreatedAt
                     .ToUniversalTime()
                     .ToString("O"));

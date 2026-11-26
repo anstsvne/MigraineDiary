@@ -5,16 +5,19 @@ namespace MigraineDiary.Api.Contracts.MigraineAttacks;
 
 public sealed class CreateMigraineAttackRequest
 {
-    [Required]
+    public DateOnly? StartDate { get; init; }
+
+    public DateOnly? EndDate { get; init; }
+
     public DateTimeOffset? StartAt { get; init; }
 
-    [Required]
     public DateTimeOffset? EndAt { get; init; }
 
     [Range(1, 10)]
     public int Intensity { get; init; }
 
     [Required]
+    [EnumDataType(typeof(PainLocation))]
     public PainLocation? PainLocation { get; init; }
 
     [MaxLength(500)]
@@ -24,11 +27,11 @@ public sealed class CreateMigraineAttackRequest
     public string? Notes { get; init; }
 
     public IReadOnlyCollection<AttackSymptomRequest> Symptoms { get; init; }
-    = Array.Empty<AttackSymptomRequest>();
+        = Array.Empty<AttackSymptomRequest>();
 
     public IReadOnlyCollection<AttackTriggerRequest> Triggers { get; init; }
-    = Array.Empty<AttackTriggerRequest>();
+        = Array.Empty<AttackTriggerRequest>();
 
     public IReadOnlyCollection<AttackMedicationRequest> Medications { get; init; }
-    = Array.Empty<AttackMedicationRequest>();
+        = Array.Empty<AttackMedicationRequest>();
 }
