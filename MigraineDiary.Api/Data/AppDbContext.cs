@@ -1,4 +1,5 @@
-﻿using MigraineDiary.Api.Entities;
+
+using MigraineDiary.Api.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace MigraineDiary.Api.Data;
@@ -66,11 +67,19 @@ public sealed class AppDbContext : DbContext
         {
             entity.HasKey(x => x.Id);
 
-            entity.Property(x => x.StartAt)
+            entity.Property(x => x.StartDate)
+                .HasColumnType("date")
                 .IsRequired();
 
-            entity.Property(x => x.EndAt)
+            entity.Property(x => x.EndDate)
+                .HasColumnType("date")
                 .IsRequired();
+
+            entity.Property(x => x.StartAt)
+                .IsRequired(false);
+
+            entity.Property(x => x.EndAt)
+                .IsRequired(false);
 
             entity.Property(x => x.Intensity)
                 .IsRequired();
@@ -91,6 +100,18 @@ public sealed class AppDbContext : DbContext
                 .HasForeignKey(x => x.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            entity.HasIndex(x => new
+            {
+                x.UserId,
+                x.StartDate
+            });
+
+            entity.HasIndex(x => new
+            {
+                x.UserId,
+                x.EndDate
+            });
+
             entity.ToTable(table =>
             {
                 table.HasCheckConstraint(
@@ -98,8 +119,12 @@ public sealed class AppDbContext : DbContext
                     "\"Intensity\" >= 1 AND \"Intensity\" <= 10");
 
                 table.HasCheckConstraint(
-                    "CK_MigraineAttacks_EndAt",
-                    "\"EndAt\" >= \"StartAt\"");
+                    "CK_MigraineAttacks_DateRange",
+                    "\"EndDate\" >= \"StartDate\"");
+
+                table.HasCheckConstraint(
+                    "CK_MigraineAttacks_ExactTimeRange",
+                    "\"StartAt\" IS NULL OR \"EndAt\" IS NULL OR \"EndAt\" >= \"StartAt\"");
             });
         });
 

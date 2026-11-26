@@ -6,11 +6,17 @@ public sealed class MigraineAttackResponse
 {
     public Guid Id { get; init; }
 
-    public DateTimeOffset StartAt { get; init; }
+    public DateOnly StartDate { get; init; }
 
-    public DateTimeOffset EndAt { get; init; }
+    public DateOnly EndDate { get; init; }
 
-    public double DurationMinutes { get; init; }
+    public DateTimeOffset? StartAt { get; init; }
+
+    public DateTimeOffset? EndAt { get; init; }
+
+    public double? DurationMinutes { get; init; }
+
+    public int DurationDays { get; init; }
 
     public int Intensity { get; init; }
 
@@ -23,11 +29,11 @@ public sealed class MigraineAttackResponse
     public DateTimeOffset CreatedAt { get; init; }
 
     public IReadOnlyCollection<AttackSymptomResponse> Symptoms { get; init; }
-    = Array.Empty<AttackSymptomResponse>();
+        = Array.Empty<AttackSymptomResponse>();
 
     public IReadOnlyCollection<AttackTriggerResponse> Triggers { get; init; }
-    = Array.Empty<AttackTriggerResponse>();
+        = Array.Empty<AttackTriggerResponse>();
 
     public IReadOnlyCollection<AttackMedicationResponse> Medications { get; init; }
-    = Array.Empty<AttackMedicationResponse>();
+        = Array.Empty<AttackMedicationResponse>();
 }

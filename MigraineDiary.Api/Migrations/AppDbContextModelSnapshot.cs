@@ -119,8 +119,11 @@ namespace MigraineDiary.Api.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTimeOffset>("EndAt")
+                    b.Property<DateTimeOffset?>("EndAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateOnly>("EndDate")
+                        .HasColumnType("date");
 
                     b.Property<int>("Intensity")
                         .HasColumnType("integer");
@@ -138,19 +141,26 @@ namespace MigraineDiary.Api.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
-                    b.Property<DateTimeOffset>("StartAt")
+                    b.Property<DateTimeOffset?>("StartAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateOnly>("StartDate")
+                        .HasColumnType("date");
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId");
+                    b.HasIndex("UserId", "EndDate");
+
+                    b.HasIndex("UserId", "StartDate");
 
                     b.ToTable("MigraineAttacks", t =>
                         {
-                            t.HasCheckConstraint("CK_MigraineAttacks_EndAt", "\"EndAt\" >= \"StartAt\"");
+                            t.HasCheckConstraint("CK_MigraineAttacks_DateRange", "\"EndDate\" >= \"StartDate\"");
+
+                            t.HasCheckConstraint("CK_MigraineAttacks_ExactTimeRange", "\"StartAt\" IS NULL OR \"EndAt\" IS NULL OR \"EndAt\" >= \"StartAt\"");
 
                             t.HasCheckConstraint("CK_MigraineAttacks_Intensity", "\"Intensity\" >= 1 AND \"Intensity\" <= 10");
                         });
