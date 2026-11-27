@@ -215,6 +215,290 @@ public sealed class MedicationEffectivenessApiTests
         Assert.Equal(medication, stored.GetProperty("medicationId").GetGuid());
     }
 
+    [Fact]
+    public async Task Statistics_ShouldGroupMedicationEffectivenessByMedicationAndRating()
+    {
+        var token = await LoginNewUserAsync();
+
+        var medicationA = await CreateMedicationAsync(token);
+        var medicationB = await CreateMedicationAsync(token);
+
+        await CreateAttackAsync(
+            token,
+            Intake(medicationA, "Helped"),
+            Intake(medicationB, "NotAssessed"));
+
+        await CreateAttackAsync(
+            token,
+            Intake(medicationA, "PartiallyHelped"),
+            Intake(medicationB, "DidNotHelp"));
+
+        using var response = await SendAsync(
+            HttpMethod.Get,
+            $"{Attacks}/statistics",
+            token);
+
+        var statistics = await ReadAsync(response, HttpStatusCode.OK);
+
+        var rows = statistics
+            .GetProperty("medicationEffectiveness")
+            .EnumerateArray()
+            .ToArray();
+
+        Assert.Equal(4, rows.Length);
+
+        AssertEffectivenessCount(rows, medicationA, "Helped", 1);
+        AssertEffectivenessCount(rows, medicationA, "PartiallyHelped", 1);
+        AssertEffectivenessCount(rows, medicationB, "NotAssessed", 1);
+        AssertEffectivenessCount(rows, medicationB, "DidNotHelp", 1);
+    }
+
+    [Fact]
+    public async Task Statistics_ShouldCalculateMaximumDuration()
+    {
+        var token = await LoginNewUserAsync();
+
+        await CreateTimedAttackAsync(
+            token,
+            new DateTimeOffset(2026, 11, 12, 8, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 11, 12, 10, 0, 0, TimeSpan.Zero));
+
+        await CreateTimedAttackAsync(
+            token,
+            new DateTimeOffset(2026, 11, 13, 7, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 11, 13, 11, 0, 0, TimeSpan.Zero));
+
+        // Приступ без точного времени.
+        await CreateAttackAsync(token);
+
+        using var response = await SendAsync(
+            HttpMethod.Get,
+            $"{Attacks}/statistics",
+            token);
+
+        var statistics = await ReadAsync(response, HttpStatusCode.OK);
+
+        Assert.Equal(3, statistics.GetProperty("attackCount").GetInt32());
+
+        Assert.Equal(
+            180,
+            statistics.GetProperty("averageDurationMinutes").GetDouble());
+
+        Assert.Equal(
+            240,
+            statistics.GetProperty("maxDurationMinutes").GetDouble());
+
+        Assert.Equal(
+            2,
+            statistics.GetProperty("knownDurationAttackCount").GetInt32());
+
+        Assert.Equal(
+            1,
+            statistics.GetProperty("unknownDurationAttackCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task Statistics_ShouldFilterMedicationEffectivenessByPeriod()
+    {
+        var token = await LoginNewUserAsync();
+        var medication = await CreateMedicationAsync(token);
+
+        await CreateAttackForDateAsync(
+            token,
+            new DateOnly(2026, 11, 12),
+            Intake(medication, "Helped"));
+
+        await CreateAttackForDateAsync(
+            token,
+            new DateOnly(2026, 11, 13),
+            Intake(medication, "DidNotHelp"));
+
+        using var response = await SendAsync(
+            HttpMethod.Get,
+            $"{Attacks}/statistics?fromDate=2026-11-12&toDate=2026-11-12",
+            token);
+
+        var statistics = await ReadAsync(response, HttpStatusCode.OK);
+
+        Assert.Equal(1, statistics.GetProperty("attackCount").GetInt32());
+
+        var rows = statistics
+            .GetProperty("medicationEffectiveness")
+            .EnumerateArray()
+            .ToArray();
+
+        Assert.Single(rows);
+
+        AssertEffectivenessCount(rows, medication, "Helped", 1);
+    }
+
+    [Fact]
+    public async Task Statistics_ShouldNotIncludeAnotherUsersMedicationData()
+    {
+        var firstToken = await LoginNewUserAsync();
+        var secondToken = await LoginNewUserAsync();
+
+        var firstMedication = await CreateMedicationAsync(firstToken);
+        var secondMedication = await CreateMedicationAsync(secondToken);
+
+        await CreateAttackAsync(
+            firstToken,
+            Intake(firstMedication, "Helped"));
+
+        await CreateAttackAsync(
+            secondToken,
+            Intake(secondMedication, "DidNotHelp"));
+
+        using var response = await SendAsync(
+            HttpMethod.Get,
+            $"{Attacks}/statistics",
+            firstToken);
+
+        var statistics = await ReadAsync(response, HttpStatusCode.OK);
+
+        Assert.Equal(1, statistics.GetProperty("attackCount").GetInt32());
+
+        var rows = statistics
+            .GetProperty("medicationEffectiveness")
+            .EnumerateArray()
+            .ToArray();
+
+        Assert.Single(rows);
+
+        Assert.Equal(
+            firstMedication,
+            rows[0].GetProperty("medicationId").GetGuid());
+
+        Assert.DoesNotContain(
+            rows,
+            x => x.GetProperty("medicationId").GetGuid() == secondMedication);
+    }
+
+    [Fact]
+    public async Task Statistics_WithoutAttacks_ShouldReturnEmptyMedicationEffectiveness()
+    {
+        var token = await LoginNewUserAsync();
+
+        using var response = await SendAsync(
+            HttpMethod.Get,
+            $"{Attacks}/statistics",
+            token);
+
+        var statistics = await ReadAsync(response, HttpStatusCode.OK);
+
+        Assert.Equal(0, statistics.GetProperty("attackCount").GetInt32());
+
+        Assert.Equal(JsonValueKind.Null, statistics.GetProperty("maxDurationMinutes").ValueKind);
+
+        Assert.Empty(
+            statistics.GetProperty("medicationEffectiveness")
+                .EnumerateArray());
+    }
+
+    [Fact]
+    public async Task Statistics_ShouldCalculateDurationAcrossDifferentDates()
+    {
+        var token = await LoginNewUserAsync();
+
+        await CreateTimedAttackAsync(
+            token,
+            new DateTimeOffset(2026, 11, 12, 22, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 11, 13, 2, 0, 0, TimeSpan.Zero));
+
+        using var response = await SendAsync(
+            HttpMethod.Get,
+            $"{Attacks}/statistics",
+            token);
+
+        var statistics = await ReadAsync(
+            response,
+            HttpStatusCode.OK);
+
+        Assert.Equal(
+            240,
+            statistics.GetProperty("averageDurationMinutes").GetDouble());
+
+        Assert.Equal(
+            240,
+            statistics.GetProperty("maxDurationMinutes").GetDouble());
+
+        Assert.Equal(
+            1,
+            statistics.GetProperty("knownDurationAttackCount").GetInt32());
+
+        Assert.Equal(
+            0,
+            statistics.GetProperty("unknownDurationAttackCount").GetInt32());
+    }
+
+    private static void AssertEffectivenessCount(
+        JsonElement[] rows,
+        Guid medicationId,
+        string effectiveness,
+        int expectedCount)
+    {
+        var item = Assert.Single(
+            rows.Where(x =>
+                x.GetProperty("medicationId").GetGuid() == medicationId &&
+                x.GetProperty("effectiveness").GetString() == effectiveness));
+
+        Assert.Equal(
+            expectedCount,
+            item.GetProperty("count").GetInt32());
+    }
+
+    private async Task<JsonElement> CreateAttackForDateAsync(
+        string token,
+        DateOnly date,
+        params object[] intakes)
+    {
+        var body = new
+        {
+            startDate = date.ToString("yyyy-MM-dd"),
+            endDate = date.ToString("yyyy-MM-dd"),
+            intensity = 5,
+            painLocation = "LeftSide",
+            medications = intakes
+        };
+
+        return await CreateAttackWithBodyAsync(token, body);
+    }
+
+    private async Task<JsonElement> CreateTimedAttackAsync(
+        string token,
+        DateTimeOffset startAt,
+        DateTimeOffset endAt)
+    {
+        var body = new
+        {
+            startDate = DateOnly.FromDateTime(startAt.UtcDateTime)
+                .ToString("yyyy-MM-dd"),
+
+            endDate = DateOnly.FromDateTime(endAt.UtcDateTime)
+                .ToString("yyyy-MM-dd"),
+
+            startAt,
+            endAt,
+            intensity = 5,
+            painLocation = "LeftSide",
+            medications = Array.Empty<object>()
+        };
+
+        return await CreateAttackWithBodyAsync(token, body);
+    }
+
+    private async Task<JsonElement> CreateAttackWithBodyAsync(
+        string token,
+        object body)
+    {
+        using var response = await SendAsync(
+            HttpMethod.Post,
+            Attacks,
+            token,
+            body);
+
+        return await ReadAsync(response, HttpStatusCode.Created);
+    }
     private static Dictionary<string, object?> Intake(Guid medication, string? rating = null, Guid? id = null, string dosage = "400 mg")
     {
         var result = new Dictionary<string, object?>
