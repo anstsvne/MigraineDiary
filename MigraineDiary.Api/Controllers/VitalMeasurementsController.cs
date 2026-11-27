@@ -40,6 +40,22 @@ public sealed class VitalMeasurementsController : ControllerBase
         return Ok(measurements);
     }
 
+    [HttpGet("statistics")]
+    public async Task<ActionResult<VitalMeasurementStatisticsResponse>> GetStatistics(
+        [FromQuery] VitalMeasurementStatisticsRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetUserId(out var userId))
+        {
+            return Unauthorized();
+        }
+
+        var statistics = await _vitalMeasurementService.GetStatisticsAsync(
+            userId, request, cancellationToken);
+
+        return Ok(statistics);
+    }
+
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<VitalMeasurementResponse>> GetById(
         Guid id,

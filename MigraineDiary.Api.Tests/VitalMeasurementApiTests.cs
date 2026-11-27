@@ -610,6 +610,142 @@ public sealed class VitalMeasurementApiTests
             response.StatusCode);
     }
 
+    [Fact]
+    public async Task Statistics_ShouldAggregateAllMeasurements()
+    {
+        var token = await CreateUserAndLoginAsync();
+        await CreateMeasurementAsync(token, 110, 70, 65, "first");
+        await CreateMeasurementAsync(token, 126, 81, 76, "second");
+        await CreateMeasurementAsync(token, 140, 90, 85, "third");
+
+        var stats = await GetStatisticsAsync(token);
+
+        Assert.Equal(3, stats.MeasurementCount);
+        Assert.Equal(125.33d, stats.AverageSystolicPressure);
+        Assert.Equal(110, stats.MinSystolicPressure);
+        Assert.Equal(140, stats.MaxSystolicPressure);
+        Assert.Equal(80.33d, stats.AverageDiastolicPressure);
+        Assert.Equal(70, stats.MinDiastolicPressure);
+        Assert.Equal(90, stats.MaxDiastolicPressure);
+        Assert.Equal(75.33d, stats.AveragePulse);
+        Assert.Equal(65, stats.MinPulse);
+        Assert.Equal(85, stats.MaxPulse);
+    }
+
+    [Fact]
+    public async Task Statistics_WithSingleMeasurement_ShouldReturnSameValues()
+    {
+        var token = await CreateUserAndLoginAsync();
+        await CreateMeasurementAsync(token, 123, 78, 69, "single");
+        var stats = await GetStatisticsAsync(token);
+
+        Assert.Equal(1, stats.MeasurementCount);
+        Assert.Equal(123d, stats.AverageSystolicPressure);
+        Assert.Equal(123, stats.MinSystolicPressure);
+        Assert.Equal(123, stats.MaxSystolicPressure);
+        Assert.Equal(78d, stats.AverageDiastolicPressure);
+        Assert.Equal(78, stats.MinDiastolicPressure);
+        Assert.Equal(78, stats.MaxDiastolicPressure);
+        Assert.Equal(69d, stats.AveragePulse);
+        Assert.Equal(69, stats.MinPulse);
+        Assert.Equal(69, stats.MaxPulse);
+    }
+
+    [Fact]
+    public async Task Statistics_WithoutMeasurements_ShouldReturnNullMetrics()
+    {
+        var token = await CreateUserAndLoginAsync();
+        AssertEmptyStatistics(await GetStatisticsAsync(token));
+    }
+
+    [Fact]
+    public async Task Statistics_ShouldExcludeOtherUsersMeasurements()
+    {
+        var token = await CreateUserAndLoginAsync();
+        var other = await CreateUserAndLoginAsync();
+        await CreateMeasurementAsync(token, 120, 80, 70, "own");
+        await CreateMeasurementAsync(other, 190, 110, 150, "foreign");
+
+        var stats = await GetStatisticsAsync(token);
+        Assert.Equal(1, stats.MeasurementCount);
+        Assert.Equal(120d, stats.AverageSystolicPressure);
+        Assert.Equal(80, stats.MaxDiastolicPressure);
+        Assert.Equal(70, stats.MaxPulse);
+    }
+
+    [Theory]
+    [InlineData("?fromDate=2026-11-12&toDate=2026-11-12", 2, 125)]
+    [InlineData("?fromDate=2026-11-12", 3, 130)]
+    [InlineData("?toDate=2026-11-12", 3, 120)]
+    [InlineData("?from=2026-11-12T03:00:00%2B03:00&to=2026-11-12T03:00:00%2B03:00", 1, 120)]
+    public async Task Statistics_ShouldRespectPeriodBoundaries(
+        string query, int expectedCount, int expectedAverage)
+    {
+        var token = await CreateUserAndLoginAsync();
+        var midnight = new DateTimeOffset(2026, 11, 12, 0, 0, 0, TimeSpan.Zero);
+        await CreateMeasurementAsync(token, 110, 70, 60, "before", midnight.AddSeconds(-1));
+        await CreateMeasurementAsync(token, 120, 80, 70, "first", midnight);
+        await CreateMeasurementAsync(token, 130, 85, 80, "last", midnight.AddDays(1).AddMilliseconds(-1));
+        await CreateMeasurementAsync(token, 140, 90, 90, "after", midnight.AddDays(1));
+
+        var stats = await GetStatisticsAsync(token, query);
+        Assert.Equal(expectedCount, stats.MeasurementCount);
+        Assert.Equal((double)expectedAverage, stats.AverageSystolicPressure);
+    }
+
+    [Fact]
+    public async Task Statistics_WithNoMeasurementsInPeriod_ShouldReturnNullMetrics()
+    {
+        var token = await CreateUserAndLoginAsync();
+        await CreateMeasurementAsync(token, 120, 80, 70, "outside");
+        AssertEmptyStatistics(await GetStatisticsAsync(token, "?fromDate=2026-11-20"));
+    }
+
+    [Theory]
+    [InlineData("?fromDate=2026-11-13&toDate=2026-11-12")]
+    [InlineData("?from=2026-11-13T00:00:00Z&to=2026-11-12T00:00:00Z")]
+    [InlineData("?fromDate=2026-11-12&to=2026-11-13T00:00:00Z")]
+    [InlineData("?fromDate=not-a-date")]
+    public async Task Statistics_WithInvalidPeriod_ShouldReturnBadRequest(string query)
+    {
+        var token = await CreateUserAndLoginAsync();
+        using var response = await SendAuthorizedAsync(
+            HttpMethod.Get, "/api/vital-measurements/statistics" + query, token);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Statistics_ShouldRequireAuthorization()
+    {
+        using var response = await _client.GetAsync("/api/vital-measurements/statistics");
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    private async Task<VitalMeasurementStatisticsResponse> GetStatisticsAsync(
+        string token, string query = "")
+    {
+        using var response = await SendAuthorizedAsync(
+            HttpMethod.Get, "/api/vital-measurements/statistics" + query, token);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<VitalMeasurementStatisticsResponse>();
+        Assert.NotNull(result);
+        return result;
+    }
+
+    private static void AssertEmptyStatistics(VitalMeasurementStatisticsResponse stats)
+    {
+        Assert.Equal(0, stats.MeasurementCount);
+        Assert.Null(stats.AverageSystolicPressure);
+        Assert.Null(stats.MinSystolicPressure);
+        Assert.Null(stats.MaxSystolicPressure);
+        Assert.Null(stats.AverageDiastolicPressure);
+        Assert.Null(stats.MinDiastolicPressure);
+        Assert.Null(stats.MaxDiastolicPressure);
+        Assert.Null(stats.AveragePulse);
+        Assert.Null(stats.MinPulse);
+        Assert.Null(stats.MaxPulse);
+    }
+
     private async Task<VitalMeasurementResponse>
         CreateMeasurementAsync(
             string token,

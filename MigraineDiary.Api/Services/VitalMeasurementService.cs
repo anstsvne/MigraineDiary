@@ -102,6 +102,98 @@ public sealed class VitalMeasurementService
         };
     }
 
+    public async Task<VitalMeasurementStatisticsResponse> GetStatisticsAsync(
+        Guid userId,
+        VitalMeasurementStatisticsRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if ((request.From.HasValue || request.To.HasValue) &&
+            (request.FromDate.HasValue || request.ToDate.HasValue))
+        {
+            throw new ArgumentException(
+                "Timestamp and calendar date filters cannot be combined.");
+        }
+
+        if ((request.From.HasValue && request.To.HasValue &&
+             request.From.Value > request.To.Value) ||
+            (request.FromDate.HasValue && request.ToDate.HasValue &&
+             request.FromDate.Value > request.ToDate.Value))
+        {
+            throw new ArgumentException(
+                "The period end cannot be earlier than the period start.");
+        }
+
+        var query = _dbContext.VitalMeasurements
+            .AsNoTracking()
+            .Where(x => x.UserId == userId);
+
+        if (request.From.HasValue)
+        {
+            var from = request.From.Value.ToUniversalTime();
+            query = query.Where(x => x.MeasuredAt >= from);
+        }
+
+        if (request.To.HasValue)
+        {
+            var to = request.To.Value.ToUniversalTime();
+            query = query.Where(x => x.MeasuredAt <= to);
+        }
+
+        if (request.FromDate.HasValue)
+        {
+            var from = new DateTimeOffset(
+                request.FromDate.Value.ToDateTime(TimeOnly.MinValue),
+                TimeSpan.Zero);
+            query = query.Where(x => x.MeasuredAt >= from);
+        }
+
+        // Exclusive midnight of the following UTC date includes the entire
+        // requested final day, including fractional seconds.
+        if (request.ToDate.HasValue && request.ToDate.Value != DateOnly.MaxValue)
+        {
+            var toExclusive = new DateTimeOffset(
+                request.ToDate.Value.AddDays(1).ToDateTime(TimeOnly.MinValue),
+                TimeSpan.Zero);
+            query = query.Where(x => x.MeasuredAt < toExclusive);
+        }
+
+        var result = await query
+            .GroupBy(x => 1)
+            .Select(group => new
+            {
+                MeasurementCount = group.Count(),
+                AverageSystolicPressure = group.Average(x => x.SystolicPressure),
+                MinSystolicPressure = group.Min(x => x.SystolicPressure),
+                MaxSystolicPressure = group.Max(x => x.SystolicPressure),
+                AverageDiastolicPressure = group.Average(x => x.DiastolicPressure),
+                MinDiastolicPressure = group.Min(x => x.DiastolicPressure),
+                MaxDiastolicPressure = group.Max(x => x.DiastolicPressure),
+                AveragePulse = group.Average(x => x.Pulse),
+                MinPulse = group.Min(x => x.Pulse),
+                MaxPulse = group.Max(x => x.Pulse)
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (result is null)
+        {
+            return new VitalMeasurementStatisticsResponse();
+        }
+
+        return new VitalMeasurementStatisticsResponse
+        {
+            MeasurementCount = result.MeasurementCount,
+            AverageSystolicPressure = Math.Round(result.AverageSystolicPressure, 2),
+            MinSystolicPressure = result.MinSystolicPressure,
+            MaxSystolicPressure = result.MaxSystolicPressure,
+            AverageDiastolicPressure = Math.Round(result.AverageDiastolicPressure, 2),
+            MinDiastolicPressure = result.MinDiastolicPressure,
+            MaxDiastolicPressure = result.MaxDiastolicPressure,
+            AveragePulse = Math.Round(result.AveragePulse, 2),
+            MinPulse = result.MinPulse,
+            MaxPulse = result.MaxPulse
+        };
+    }
+
     public async Task<VitalMeasurementResponse?> GetByIdAsync(
         Guid userId,
         Guid measurementId,
