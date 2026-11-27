@@ -382,11 +382,24 @@ public sealed class MigraineAttackService
             })
             .ToListAsync(cancellationToken);
 
+        var intensityCounts = attacks
+            .GroupBy(x => x.Intensity)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        var intensityDistribution = Enumerable.Range(1, 10)
+            .Select(intensity => new IntensityDistributionItemResponse
+            {
+                Intensity = intensity,
+                Count = intensityCounts.GetValueOrDefault(intensity)
+            })
+            .ToArray();
+
         if (attacks.Count == 0)
         {
             return new MigraineAttackStatisticsResponse
             {
                 AttackCount = 0,
+                IntensityDistribution = intensityDistribution,
                 MigraineDaysCount = 0,
                 AverageIntensity = 0,
                 MinIntensity = null,
@@ -425,6 +438,38 @@ public sealed class MigraineAttackService
                     ? request.ToDate.Value
                     : x.EndDate
             )));
+
+        // Daily trend counts attack starts once. Calendar overlap can include
+        // attacks that began before the requested range; do not plot those
+        // starts outside the calendar range or assign them to another date.
+        var dailyTrend = attacks
+            .Where(x => (!request.FromDate.HasValue || x.StartDate >= request.FromDate.Value) &&
+                        (!request.ToDate.HasValue || x.StartDate <= request.ToDate.Value))
+            .GroupBy(x => x.StartDate)
+            .OrderBy(group => group.Key)
+            .Select(group =>
+            {
+                var dailyDurations = group
+                    .Where(x => x.StartAt.HasValue && x.EndAt.HasValue)
+                    .Select(x => (x.EndAt!.Value - x.StartAt!.Value).TotalMinutes)
+                    .ToArray();
+
+                return new MigraineAttackDailyTrendItemResponse
+                {
+                    Date = group.Key,
+                    AttackCount = group.Count(),
+                    AverageIntensity = Math.Round(group.Average(x => x.Intensity), 2),
+                    MaxIntensity = group.Max(x => x.Intensity),
+                    KnownDurationAttackCount = dailyDurations.Length,
+                    AverageDurationMinutes = dailyDurations.Length == 0
+                        ? null
+                        : Math.Round(dailyDurations.Average(), 2),
+                    MaxDurationMinutes = dailyDurations.Length == 0
+                        ? null
+                        : Math.Round(dailyDurations.Max(), 2)
+                };
+            })
+            .ToArray();
 
         // Группировка симптомов.
         var symptoms = await query
@@ -514,6 +559,8 @@ public sealed class MigraineAttackService
             AttackCount = attacks.Count,
 
             MigraineDaysCount = migraineDaysCount,
+            IntensityDistribution = intensityDistribution,
+            DailyTrend = dailyTrend,
 
             AverageIntensity = Math.Round(
                 attacks.Average(x => x.Intensity),
