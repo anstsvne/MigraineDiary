@@ -65,6 +65,23 @@ public sealed class DataExportService
                     x.MeasuredAt <= toUtc);
         }
 
+        if (request.FromDate is DateOnly lowerDate)
+        {
+            attacksQuery = attacksQuery.Where(x => x.EndDate >= lowerDate);
+            var fromUtc = new DateTimeOffset(lowerDate.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+            vitalMeasurementsQuery = vitalMeasurementsQuery.Where(x => x.MeasuredAt >= fromUtc);
+        }
+
+        if (request.ToDate is DateOnly upperDate)
+        {
+            attacksQuery = attacksQuery.Where(x => x.StartDate <= upperDate);
+            if (upperDate != DateOnly.MaxValue)
+            {
+                var toExclusive = new DateTimeOffset(upperDate.AddDays(1).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+                vitalMeasurementsQuery = vitalMeasurementsQuery.Where(x => x.MeasuredAt < toExclusive);
+            }
+        }
+
         var attacks = await attacksQuery
             .AsSplitQuery()
             .Include(x => x.Symptoms)
@@ -80,6 +97,7 @@ public sealed class DataExportService
 
         var vitalMeasurements = await vitalMeasurementsQuery
             .OrderBy(x => x.MeasuredAt)
+            .ThenBy(x => x.Id)
             .ToListAsync(cancellationToken);
 
         var attacksCsv = BuildAttacksCsv(attacks);
@@ -130,7 +148,8 @@ public sealed class DataExportService
             "Symptoms",
             "Triggers",
             "Medications",
-            "CreatedAtUtc");
+            "CreatedAtUtc",
+            "DurationDays");
 
         foreach (var attack in attacks)
         {
@@ -157,6 +176,7 @@ public sealed class DataExportService
                 attack.Medications
                     .OrderBy(x => x.TakenAt)
                     .ThenBy(x => x.Medication.Name)
+                    .ThenBy(x => x.Id)
                     .Select(BuildMedicationItem));
 
             double? durationMinutes = null;
@@ -204,7 +224,10 @@ public sealed class DataExportService
 
                 attack.CreatedAt
                     .ToUniversalTime()
-                    .ToString("O"));
+                    .ToString("O"),
+
+                (attack.EndDate.DayNumber - attack.StartDate.DayNumber + 1)
+                    .ToString(CultureInfo.InvariantCulture));
         }
 
         return builder.ToString();
@@ -223,7 +246,9 @@ public sealed class DataExportService
             "Pulse",
             "MeasuredAtUtc",
             "Notes",
-            "CreatedAtUtc");
+            "CreatedAtUtc",
+            "MigraineAttackId",
+            "BodyPosition");
 
         foreach (var measurement in measurements)
         {
@@ -248,7 +273,10 @@ public sealed class DataExportService
 
                 measurement.CreatedAt
                     .ToUniversalTime()
-                    .ToString("O"));
+                    .ToString("O"),
+
+                measurement.MigraineAttackId?.ToString(),
+                measurement.BodyPosition?.ToString());
         }
 
         return builder.ToString();
@@ -284,10 +312,8 @@ public sealed class DataExportService
                     .ToString("O"));
         }
 
-        if (details.Count == 0)
-        {
-            return medication.Medication.Name;
-        }
+        // Record effectiveness for every intake, even if it was not assessed.
+        details.Add($"Effectiveness={medication.Effectiveness}");
 
         return $"{medication.Medication.Name} [{string.Join(", ", details)}]";
     }
@@ -296,10 +322,8 @@ public sealed class DataExportService
         StringBuilder builder,
         params string?[] values)
     {
-        builder.AppendLine(
-            string.Join(
-                ";",
-                values.Select(EscapeCsvValue)));
+        builder.Append(string.Join(";", values.Select(EscapeCsvValue)));
+        builder.Append("\r\n");
     }
 
     private static string EscapeCsvValue(string? value)
@@ -309,13 +333,22 @@ public sealed class DataExportService
             return "\"\"";
         }
 
+        // Keep the existing single-line cell format and protect spreadsheet
+        // applications from treating user-provided text as a formula.
         var normalized = value
             .Replace("\r\n", " ")
             .Replace('\r', ' ')
-            .Replace('\n', ' ')
-            .Replace("\"", "\"\"");
+            .Replace('\n', ' ');
 
-        return $"\"{normalized}\"";
+        var trimmed = normalized.TrimStart();
+        if ((value[0] is '\t' or '\r' or '\n') ||
+            (trimmed.Length > 0 && (trimmed[0] is '=' or '+' or '-' or '@'
+                or '\uFF1D' or '\uFF0B' or '\uFF0D' or '\uFF20')))
+        {
+            normalized = "'" + normalized;
+        }
+
+        return $"\"{normalized.Replace("\"", "\"\"")}\"";
     }
 
     private static async Task AddCsvEntryAsync(
@@ -345,9 +378,14 @@ public sealed class DataExportService
     private static void ValidatePeriod(
         DataExportRequest request)
     {
-        if (request.From.HasValue &&
-            request.To.HasValue &&
-            request.To.Value < request.From.Value)
+        if ((request.From.HasValue || request.To.HasValue) &&
+            (request.FromDate.HasValue || request.ToDate.HasValue))
+        {
+            throw new ArgumentException("Timestamp and calendar date filters cannot be combined.");
+        }
+
+        if ((request.From.HasValue && request.To.HasValue && request.To.Value < request.From.Value) ||
+            (request.FromDate.HasValue && request.ToDate.HasValue && request.ToDate.Value < request.FromDate.Value))
         {
             throw new ArgumentException(
                 "Конец периода не может быть раньше начала периода.");
