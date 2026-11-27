@@ -278,6 +278,7 @@ public sealed class MigraineAttackService
         };
     }
 
+
     public async Task<MigraineAttackStatisticsResponse> GetStatisticsAsync(
         Guid userId,
         MigraineAttackStatisticsRequest request,
@@ -300,6 +301,8 @@ public sealed class MigraineAttackService
             .Select(x => new
             {
                 x.Intensity,
+                x.StartDate,
+                x.EndDate,
                 x.StartAt,
                 x.EndAt
             })
@@ -310,13 +313,18 @@ public sealed class MigraineAttackService
             return new MigraineAttackStatisticsResponse
             {
                 AttackCount = 0,
+                MigraineDaysCount = 0,
                 AverageIntensity = 0,
-                AverageDurationMinutes = null
+                MinIntensity = null,
+                MaxIntensity = null,
+                AverageDurationMinutes = null,
+                KnownDurationAttackCount = 0,
+                UnknownDurationAttackCount = 0
             };
         }
 
-        // Средняя продолжительность рассчитывается
-        // только для приступов с обоими точными временами.
+        // Продолжительность известна только тогда,
+        // когда указаны оба точных времени.
         var durations = attacks
             .Where(x =>
                 x.StartAt.HasValue &&
@@ -325,6 +333,21 @@ public sealed class MigraineAttackService
                 (x.EndAt!.Value - x.StartAt!.Value).TotalMinutes)
             .ToList();
 
+        // Подсчёт уникальных календарных дней мигрени.
+        var migraineDaysCount = CountUniqueMigraineDays(
+            attacks.Select(x => (
+                StartDate: request.FromDate.HasValue &&
+                           x.StartDate < request.FromDate.Value
+                    ? request.FromDate.Value
+                    : x.StartDate,
+
+                EndDate: request.ToDate.HasValue &&
+                         x.EndDate > request.ToDate.Value
+                    ? request.ToDate.Value
+                    : x.EndDate
+            )));
+
+        // Группировка симптомов.
         var symptoms = await query
             .SelectMany(x => x.Symptoms)
             .GroupBy(x => new
@@ -342,6 +365,7 @@ public sealed class MigraineAttackService
             .ThenBy(x => x.Name)
             .ToListAsync(cancellationToken);
 
+        // Группировка триггеров.
         var triggers = await query
             .SelectMany(x => x.Triggers)
             .GroupBy(x => new
@@ -359,6 +383,7 @@ public sealed class MigraineAttackService
             .ThenBy(x => x.Name)
             .ToListAsync(cancellationToken);
 
+        // Группировка лекарств.
         var medications = await query
             .SelectMany(x => x.Medications)
             .GroupBy(x => new
@@ -370,7 +395,6 @@ public sealed class MigraineAttackService
             {
                 Id = group.Key.MedicationId,
                 Name = group.Key.Name,
-
                 Count = group
                     .Select(x => x.MigraineAttackId)
                     .Distinct()
@@ -384,18 +408,76 @@ public sealed class MigraineAttackService
         {
             AttackCount = attacks.Count,
 
+            MigraineDaysCount = migraineDaysCount,
+
             AverageIntensity = Math.Round(
                 attacks.Average(x => x.Intensity),
                 2),
+
+            MinIntensity = attacks.Min(x => x.Intensity),
+
+            MaxIntensity = attacks.Max(x => x.Intensity),
 
             AverageDurationMinutes = durations.Count == 0
                 ? null
                 : Math.Round(durations.Average(), 2),
 
+            KnownDurationAttackCount = durations.Count,
+
+            UnknownDurationAttackCount = attacks.Count - durations.Count,
+
             Symptoms = symptoms,
             Triggers = triggers,
             Medications = medications
         };
+    }
+
+
+    private static int CountUniqueMigraineDays(
+        IEnumerable<(DateOnly StartDate, DateOnly EndDate)> intervals)
+    {
+        var orderedIntervals = intervals
+            .OrderBy(x => x.StartDate)
+            .ThenBy(x => x.EndDate)
+            .ToList();
+
+        if (orderedIntervals.Count == 0)
+        {
+            return 0;
+        }
+
+        var currentStart = orderedIntervals[0].StartDate;
+        var currentEnd = orderedIntervals[0].EndDate;
+
+        var totalDays = 0;
+
+        foreach (var interval in orderedIntervals.Skip(1))
+        {
+            // Если интервалы пересекаются,
+            // объединяем их.
+            if (interval.StartDate <= currentEnd)
+            {
+                if (interval.EndDate > currentEnd)
+                {
+                    currentEnd = interval.EndDate;
+                }
+            }
+            else
+            {
+                totalDays +=
+                    currentEnd.DayNumber -
+                    currentStart.DayNumber + 1;
+
+                currentStart = interval.StartDate;
+                currentEnd = interval.EndDate;
+            }
+        }
+
+        totalDays +=
+            currentEnd.DayNumber -
+            currentStart.DayNumber + 1;
+
+        return totalDays;
     }
 
     public async Task<MigraineAttackResponse?> GetByIdAsync(
