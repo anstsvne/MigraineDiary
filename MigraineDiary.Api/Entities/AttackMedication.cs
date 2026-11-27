@@ -1,3 +1,5 @@
+using MigraineDiary.Api.Enums;
+
 namespace MigraineDiary.Api.Entities;
 
 public sealed class AttackMedication
@@ -11,6 +13,9 @@ public sealed class AttackMedication
     public string? Dosage { get; set; }
 
     public DateTimeOffset? TakenAt { get; set; }
+
+    public MedicationEffectiveness Effectiveness { get; set; }
+        = MedicationEffectiveness.NotAssessed;
 
     public MigraineAttack MigraineAttack { get; set; } = null!;
 

@@ -1,3 +1,5 @@
+using MigraineDiary.Api.Enums;
+
 namespace MigraineDiary.Api.Contracts.MigraineAttacks;
 
 public sealed class AttackMedicationResponse
@@ -11,4 +13,6 @@ public sealed class AttackMedicationResponse
     public string? Dosage { get; init; }
 
     public DateTimeOffset? TakenAt { get; init; }
+
+    public MedicationEffectiveness Effectiveness { get; init; }
 }
