@@ -3,6 +3,7 @@ using MigraineDiary.Api.Contracts.MigraineAttacks;
 using MigraineDiary.Api.Contracts.VitalMeasurements;
 using MigraineDiary.Api.Data;
 using MigraineDiary.Api.Entities;
+using MigraineDiary.Api.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace MigraineDiary.Api.Services;
@@ -39,6 +40,11 @@ public sealed class MigraineAttackService
             userId,
             request.Medications,
             cancellationToken);
+
+        if (medications.Any(x => x.Id.HasValue))
+        {
+            throw new ArgumentException("New medication intakes must not specify an existing intake ID.");
+        }
 
         var attack = new MigraineAttack
         {
@@ -86,7 +92,9 @@ public sealed class MigraineAttackService
                 {
                     MedicationId = medication.MedicationId,
                     Dosage = medication.Dosage,
-                    TakenAt = medication.TakenAt
+                    TakenAt = medication.TakenAt,
+                    Effectiveness = medication.Effectiveness
+                        ?? MedicationEffectiveness.NotAssessed
                 });
         }
 
@@ -628,22 +636,8 @@ public sealed class MigraineAttackService
         }
 
         // Обновление препаратов.
-        await _dbContext.AttackMedications
-            .Where(x => x.MigraineAttackId == attackId)
-            .ExecuteDeleteAsync(cancellationToken);
-
-        foreach (var medication in requestedMedications)
-        {
-            _dbContext.AttackMedications.Add(
-                new AttackMedication
-                {
-                    Id = Guid.NewGuid(),
-                    MigraineAttackId = attackId,
-                    MedicationId = medication.MedicationId,
-                    Dosage = medication.Dosage,
-                    TakenAt = medication.TakenAt
-                });
-        }
+        await UpdateAttackMedicationsAsync(
+            attackId, requestedMedications, cancellationToken);
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -759,7 +753,8 @@ public sealed class MigraineAttackService
                     MedicationId = x.MedicationId,
                     Name = x.Medication.Name,
                     Dosage = x.Dosage,
-                    TakenAt = x.TakenAt
+                    TakenAt = x.TakenAt,
+                    Effectiveness = x.Effectiveness
                 })
                 .ToList()
         };
@@ -1052,6 +1047,25 @@ public sealed class MigraineAttackService
                 "Идентификатор препарата не может быть пустым.");
         }
 
+        if (medications.Any(x => x.Effectiveness.HasValue &&
+            !Enum.IsDefined(x.Effectiveness.Value)))
+        {
+            throw new ArgumentException("Invalid medication effectiveness.");
+        }
+
+        if (medications.Any(x => x.Id == Guid.Empty))
+        {
+            throw new ArgumentException("Medication intake ID must not be empty.");
+        }
+
+        var intakeIds = medications.Where(x => x.Id.HasValue)
+            .Select(x => x.Id!.Value).ToArray();
+
+        if (intakeIds.Distinct().Count() != intakeIds.Length)
+        {
+            throw new ArgumentException("Duplicate medication intake ID.");
+        }
+
         var medicationIds = medications
             .Select(x => x.MedicationId)
             .Distinct()
@@ -1072,10 +1086,91 @@ public sealed class MigraineAttackService
 
         return medications
             .Select(x => new NormalizedAttackMedication(
+                x.Id,
                 x.MedicationId,
                 NormalizeText(x.Dosage),
-                x.TakenAt?.ToUniversalTime()))
+                x.TakenAt?.ToUniversalTime(),
+                x.Effectiveness))
             .ToList();
+    }
+
+    private async Task UpdateAttackMedicationsAsync(
+        Guid attackId,
+        IReadOnlyList<NormalizedAttackMedication> requested,
+        CancellationToken cancellationToken)
+    {
+        var existing = await _dbContext.AttackMedications
+            .Where(x => x.MigraineAttackId == attackId)
+            .OrderBy(x => x.Id)
+            .ToListAsync(cancellationToken);
+
+        var byId = existing.ToDictionary(x => x.Id);
+        var reserved = requested.Where(x => x.Id.HasValue)
+            .Select(x => x.Id!.Value).ToHashSet();
+        var retained = new HashSet<Guid>();
+
+        // Explicit IDs must belong to the current attack and medication.
+        foreach (var item in requested.Where(x => x.Id.HasValue))
+        {
+            if (!byId.TryGetValue(item.Id!.Value, out var intake) ||
+                intake.MedicationId != item.MedicationId)
+            {
+                throw new ArgumentException("Medication intake not found or unavailable.");
+            }
+        }
+
+        foreach (var item in requested)
+        {
+            AttackMedication? intake;
+
+            if (item.Id.HasValue)
+            {
+                intake = byId[item.Id.Value];
+            }
+            else
+            {
+                // Legacy clients do not send intake IDs. Match unchanged
+                // intakes by medication, normalized dosage and time.
+                var matches = existing.Where(x =>
+                    !reserved.Contains(x.Id) && !retained.Contains(x.Id) &&
+                    x.MedicationId == item.MedicationId &&
+                    x.Dosage == item.Dosage && x.TakenAt == item.TakenAt)
+                    .ToList();
+
+                if (!item.Effectiveness.HasValue &&
+                    matches.Select(x => x.Effectiveness).Distinct().Count() > 1)
+                {
+                    throw new ArgumentException("Ambiguous medication intake; specify its ID.");
+                }
+
+                intake = matches.FirstOrDefault();
+            }
+
+            if (intake is null)
+            {
+                _dbContext.AttackMedications.Add(new AttackMedication
+                {
+                    MigraineAttackId = attackId,
+                    MedicationId = item.MedicationId,
+                    Dosage = item.Dosage,
+                    TakenAt = item.TakenAt,
+                    Effectiveness = item.Effectiveness
+                        ?? MedicationEffectiveness.NotAssessed
+                });
+                continue;
+            }
+
+            retained.Add(intake.Id);
+            intake.Dosage = item.Dosage;
+            intake.TakenAt = item.TakenAt;
+            if (item.Effectiveness.HasValue)
+            {
+                intake.Effectiveness = item.Effectiveness.Value;
+            }
+        }
+
+        _dbContext.AttackMedications.RemoveRange(
+            existing.Where(x => !retained.Contains(x.Id)));
     }
 
     private sealed record NormalizedAttackPeriod(
@@ -1085,7 +1180,9 @@ public sealed class MigraineAttackService
         DateTimeOffset? EndAt);
 
     private sealed record NormalizedAttackMedication(
+        Guid? Id,
         Guid MedicationId,
         string? Dosage,
-        DateTimeOffset? TakenAt);
+        DateTimeOffset? TakenAt,
+        MedicationEffectiveness? Effectiveness);
 }

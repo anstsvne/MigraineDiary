@@ -326,6 +326,12 @@ public sealed class AppDbContext : DbContext
 
             entity.Property(x => x.TakenAt);
 
+            entity.Property(x => x.Effectiveness)
+                .HasConversion<string>()
+                .HasMaxLength(30)
+                .HasDefaultValue(MigraineDiary.Api.Enums.MedicationEffectiveness.NotAssessed)
+                .IsRequired();
+
             entity.HasOne(x => x.MigraineAttack)
                 .WithMany(x => x.Medications)
                 .HasForeignKey(x => x.MigraineAttackId)

@@ -32,6 +32,13 @@ namespace MigraineDiary.Api.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<string>("Effectiveness")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasDefaultValue("NotAssessed");
+
                     b.Property<Guid>("MedicationId")
                         .HasColumnType("uuid");
 
@@ -47,7 +54,7 @@ namespace MigraineDiary.Api.Migrations
 
                     b.HasIndex("MigraineAttackId");
 
-                    b.ToTable("AttackMedications", (string)null);
+                    b.ToTable("AttackMedications");
                 });
 
             modelBuilder.Entity("MigraineDiary.Api.Entities.AttackSymptom", b =>
@@ -66,7 +73,7 @@ namespace MigraineDiary.Api.Migrations
 
                     b.HasIndex("SymptomId");
 
-                    b.ToTable("AttackSymptoms", (string)null);
+                    b.ToTable("AttackSymptoms");
                 });
 
             modelBuilder.Entity("MigraineDiary.Api.Entities.AttackTrigger", b =>
@@ -85,7 +92,7 @@ namespace MigraineDiary.Api.Migrations
 
                     b.HasIndex("TriggerId");
 
-                    b.ToTable("AttackTriggers", (string)null);
+                    b.ToTable("AttackTriggers");
                 });
 
             modelBuilder.Entity("MigraineDiary.Api.Entities.Medication", b =>
@@ -107,7 +114,7 @@ namespace MigraineDiary.Api.Migrations
                     b.HasIndex("UserId", "Name")
                         .IsUnique();
 
-                    b.ToTable("Medications", (string)null);
+                    b.ToTable("Medications");
                 });
 
             modelBuilder.Entity("MigraineDiary.Api.Entities.MigraineAttack", b =>
@@ -156,7 +163,7 @@ namespace MigraineDiary.Api.Migrations
 
                     b.HasIndex("UserId", "StartDate");
 
-                    b.ToTable("MigraineAttacks", null, t =>
+                    b.ToTable("MigraineAttacks", t =>
                         {
                             t.HasCheckConstraint("CK_MigraineAttacks_DateRange", "\"EndDate\" >= \"StartDate\"");
 
@@ -182,7 +189,7 @@ namespace MigraineDiary.Api.Migrations
                     b.HasIndex("Name")
                         .IsUnique();
 
-                    b.ToTable("Symptoms", (string)null);
+                    b.ToTable("Symptoms");
 
                     b.HasData(
                         new
@@ -238,7 +245,7 @@ namespace MigraineDiary.Api.Migrations
                     b.HasIndex("Name")
                         .IsUnique();
 
-                    b.ToTable("Triggers", (string)null);
+                    b.ToTable("Triggers");
 
                     b.HasData(
                         new
@@ -316,7 +323,7 @@ namespace MigraineDiary.Api.Migrations
                     b.HasIndex("Email")
                         .IsUnique();
 
-                    b.ToTable("Users", (string)null);
+                    b.ToTable("Users");
                 });
 
             modelBuilder.Entity("MigraineDiary.Api.Entities.VitalMeasurement", b =>
@@ -360,7 +367,7 @@ namespace MigraineDiary.Api.Migrations
 
                     b.HasIndex("UserId", "MeasuredAt");
 
-                    b.ToTable("VitalMeasurements", null, t =>
+                    b.ToTable("VitalMeasurements", t =>
                         {
                             t.HasCheckConstraint("CK_VitalMeasurements_DiastolicPressure", "\"DiastolicPressure\" >= 1 AND \"DiastolicPressure\" <= 200");
 
