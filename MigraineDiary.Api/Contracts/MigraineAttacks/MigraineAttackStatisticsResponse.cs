@@ -16,6 +16,14 @@ public sealed class MigraineAttackStatisticsResponse
 
     public double? MaxDurationMinutes { get; init; }
 
+    // Always includes all ten intensity levels, including zero counts.
+    public IReadOnlyList<IntensityDistributionItemResponse> IntensityDistribution { get; init; }
+        = Array.Empty<IntensityDistributionItemResponse>();
+
+    // Sparse series of attack start dates, not days with ongoing migraine.
+    public IReadOnlyList<MigraineAttackDailyTrendItemResponse> DailyTrend { get; init; }
+        = Array.Empty<MigraineAttackDailyTrendItemResponse>();
+
     public int KnownDurationAttackCount { get; init; }
 
     public int UnknownDurationAttackCount { get; init; }

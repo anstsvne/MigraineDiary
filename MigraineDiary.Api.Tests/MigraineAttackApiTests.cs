@@ -1678,6 +1678,161 @@ public sealed class MigraineAttackApiTests
         return result;
     }
 
+    [Fact]
+    public async Task ChartData_ShouldReturnAllIntensityLevelsInOrder()
+    {
+        var token = await CreateUserAndLoginAsync();
+        var day = new DateOnly(2026, 11, 12);
+        await CreateAttackAsync(token, CalendarRequest(day, day, 1));
+        await CreateAttackAsync(token, CalendarRequest(day, day, 5));
+        await CreateAttackAsync(token, CalendarRequest(day, day, 5));
+        await CreateAttackAsync(token, CalendarRequest(day, day, 10));
+
+        var stats = await GetChartStatisticsAsync(token);
+        Assert.Equal(Enumerable.Range(1, 10), stats.IntensityDistribution.Select(x => x.Intensity));
+        Assert.Equal(new[] { 1, 0, 0, 0, 2, 0, 0, 0, 0, 1 }, stats.IntensityDistribution.Select(x => x.Count));
+        Assert.Equal(stats.AttackCount, stats.IntensityDistribution.Sum(x => x.Count));
+    }
+
+    [Fact]
+    public async Task ChartData_WithoutAttacks_ShouldReturnZeroBinsAndEmptyTrend()
+    {
+        var token = await CreateUserAndLoginAsync();
+        var stats = await GetChartStatisticsAsync(token);
+        Assert.Equal(0, stats.AttackCount);
+        Assert.Equal(Enumerable.Range(1, 10), stats.IntensityDistribution.Select(x => x.Intensity));
+        Assert.All(stats.IntensityDistribution, x => Assert.Equal(0, x.Count));
+        Assert.Empty(stats.DailyTrend);
+    }
+
+    [Fact]
+    public async Task ChartData_ShouldAggregateByStartDateAndIgnoreUnknownDurations()
+    {
+        var token = await CreateUserAndLoginAsync();
+        var start = new DateTimeOffset(2026, 11, 12, 10, 0, 0, TimeSpan.Zero);
+        var day = new DateOnly(2026, 11, 12);
+        await CreateAttackAsync(token, CalendarRequest(day.AddDays(2), day.AddDays(2), 4));
+        await CreateAttackAsync(token, CreateAttackRequest(start, start.AddHours(1), 3, PainLocation.LeftSide, "first"));
+        await CreateAttackAsync(token, CreateAttackRequest(start.AddHours(12), start.AddHours(15), 6, PainLocation.LeftSide, "overnight"));
+        await CreateAttackAsync(token, CalendarRequest(day, day, 9));
+
+        var stats = await GetChartStatisticsAsync(token);
+        Assert.Equal(new[] { day, day.AddDays(2) }, stats.DailyTrend.Select(x => x.Date));
+        var first = stats.DailyTrend[0];
+        Assert.Equal(3, first.AttackCount);
+        Assert.Equal(6d, first.AverageIntensity);
+        Assert.Equal(9, first.MaxIntensity);
+        Assert.Equal(2, first.KnownDurationAttackCount);
+        Assert.Equal(120d, first.AverageDurationMinutes);
+        Assert.Equal(180d, first.MaxDurationMinutes);
+        var second = stats.DailyTrend[1];
+        Assert.Equal(1, second.AttackCount);
+        Assert.Equal(0, second.KnownDurationAttackCount);
+        Assert.Null(second.AverageDurationMinutes);
+        Assert.Null(second.MaxDurationMinutes);
+    }
+
+    [Fact]
+    public async Task ChartData_ShouldKeepCalendarOverlapMetricsButExcludeEarlierStartsFromTrend()
+    {
+        var token = await CreateUserAndLoginAsync();
+        var day = new DateOnly(2026, 11, 12);
+        await CreateAttackAsync(token, CalendarRequest(day.AddDays(-1), day, 8));
+        await CreateAttackAsync(token, CalendarRequest(day, day.AddDays(1), 6));
+        await CreateAttackAsync(token, CalendarRequest(day.AddDays(1), day.AddDays(1), 10));
+
+        var stats = await GetChartStatisticsAsync(token, "?fromDate=2026-11-12&toDate=2026-11-12");
+        Assert.Equal(2, stats.AttackCount);
+        Assert.Equal(1, stats.MigraineDaysCount);
+        Assert.Equal(1, stats.IntensityDistribution.Single(x => x.Intensity == 8).Count);
+        Assert.Equal(1, stats.IntensityDistribution.Single(x => x.Intensity == 6).Count);
+        Assert.Equal(0, stats.IntensityDistribution.Single(x => x.Intensity == 10).Count);
+        var point = Assert.Single(stats.DailyTrend);
+        Assert.Equal(day, point.Date);
+        Assert.Equal(1, point.AttackCount);
+        Assert.Equal(6d, point.AverageIntensity);
+    }
+
+    [Fact]
+    public async Task ChartData_ShouldRespectLegacyTimestampFilters()
+    {
+        var token = await CreateUserAndLoginAsync();
+        var start = new DateTimeOffset(2026, 11, 12, 10, 0, 0, TimeSpan.Zero);
+        await CreateAttackAsync(token, CreateAttackRequest(start, start.AddHours(1), 4, PainLocation.LeftSide, "included"));
+        await CreateAttackAsync(token, CreateAttackRequest(start.AddHours(-2), start, 9, PainLocation.LeftSide, "excluded"));
+
+        var stats = await GetChartStatisticsAsync(token, "?from=2026-11-12T10:00:00Z&to=2026-11-12T10:00:00Z");
+        Assert.Equal(1, stats.AttackCount);
+        Assert.Equal(1, stats.IntensityDistribution.Single(x => x.Intensity == 4).Count);
+        Assert.Equal(0, stats.IntensityDistribution.Single(x => x.Intensity == 9).Count);
+        Assert.Equal(60d, Assert.Single(stats.DailyTrend).AverageDurationMinutes);
+    }
+
+    [Fact]
+    public async Task ChartData_ShouldExcludeOtherUsers()
+    {
+        var token = await CreateUserAndLoginAsync();
+        var other = await CreateUserAndLoginAsync();
+        var day = new DateOnly(2026, 11, 12);
+        await CreateAttackAsync(token, CalendarRequest(day, day, 4));
+        await CreateAttackAsync(other, CalendarRequest(day, day, 10));
+        await CreateAttackAsync(other, CalendarRequest(day.AddDays(1), day.AddDays(1), 10));
+
+        var stats = await GetChartStatisticsAsync(token);
+        Assert.Equal(1, stats.AttackCount);
+        Assert.Equal(0, stats.IntensityDistribution.Single(x => x.Intensity == 10).Count);
+        var point = Assert.Single(stats.DailyTrend);
+        Assert.Equal(day, point.Date);
+        Assert.Equal(1, point.AttackCount);
+    }
+
+    [Fact]
+    public async Task ChartData_ShouldDistinguishZeroDurationFromUnknownDuration()
+    {
+        var token = await CreateUserAndLoginAsync();
+        var start = new DateTimeOffset(2026, 11, 12, 10, 0, 0, TimeSpan.Zero);
+        var day = new DateOnly(2026, 11, 12);
+        await CreateAttackAsync(token, CreateAttackRequest(start, start, 5, PainLocation.LeftSide, "zero"));
+        await CreateAttackAsync(token, new CreateMigraineAttackRequest
+        {
+            StartDate = day,
+            EndDate = day,
+            StartAt = start,
+            Intensity = 5,
+            PainLocation = PainLocation.LeftSide
+        });
+
+        var stats = await GetChartStatisticsAsync(token);
+        var point = Assert.Single(stats.DailyTrend);
+        Assert.Equal(2, point.AttackCount);
+        Assert.Equal(1, point.KnownDurationAttackCount);
+        Assert.Equal(0d, point.AverageDurationMinutes);
+        Assert.Equal(0d, point.MaxDurationMinutes);
+    }
+
+    [Fact]
+    public async Task ChartData_WithoutStartsInRange_ShouldNotInventStartDates()
+    {
+        var token = await CreateUserAndLoginAsync();
+        var day = new DateOnly(2026, 11, 12);
+        await CreateAttackAsync(token, CalendarRequest(day.AddDays(-2), day.AddDays(1), 7));
+
+        var stats = await GetChartStatisticsAsync(token, "?fromDate=2026-11-12&toDate=2026-11-12");
+        Assert.Equal(1, stats.AttackCount);
+        Assert.Equal(1, stats.MigraineDaysCount);
+        Assert.Equal(1, stats.IntensityDistribution.Single(x => x.Intensity == 7).Count);
+        Assert.Empty(stats.DailyTrend);
+    }
+
+    private async Task<MigraineAttackStatisticsResponse> GetChartStatisticsAsync(string token, string query = "")
+    {
+        using var response = await SendAuthorizedAsync(HttpMethod.Get, "/api/migraine-attacks/statistics" + query, token);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await ReadJsonAsync<MigraineAttackStatisticsResponse>(response);
+        Assert.NotNull(result);
+        return result;
+    }
+
     private static CreateMigraineAttackRequest CalendarRequest(
         DateOnly start,
         DateOnly end,
