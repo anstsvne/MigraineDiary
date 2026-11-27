@@ -23,7 +23,7 @@ public sealed class VitalMeasurementsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<
         PagedResponse<VitalMeasurementResponse>>> GetAll(
-        [FromQuery] PaginationRequest pagination,
+        [FromQuery] VitalMeasurementFilterRequest filter,
         CancellationToken cancellationToken)
     {
         if (!TryGetUserId(out var userId))
@@ -34,7 +34,7 @@ public sealed class VitalMeasurementsController : ControllerBase
         var measurements =
             await _vitalMeasurementService.GetAllAsync(
                 userId,
-                pagination,
+                filter,
                 cancellationToken);
 
         return Ok(measurements);

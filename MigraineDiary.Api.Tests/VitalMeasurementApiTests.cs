@@ -721,6 +721,198 @@ public sealed class VitalMeasurementApiTests
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData("fromDate=2026-11-12&toDate=2026-11-12", "last,first")]
+    [InlineData("fromDate=2026-11-12", "after,last,first")]
+    [InlineData("toDate=2026-11-12", "last,first,before")]
+    [InlineData("from=2026-11-12T03:00:00%2B03:00&to=2026-11-12T03:00:00%2B03:00", "first")]
+    public async Task List_ShouldFilterPeriod(string query, string expected)
+    {
+        var token = await CreateUserAndLoginAsync();
+        var midnight = new DateTimeOffset(2026, 11, 12, 0, 0, 0, TimeSpan.Zero);
+        await CreateMeasurementAsync(token, 110, 70, 60, "before", midnight.AddSeconds(-1));
+        await CreateMeasurementAsync(token, 120, 80, 70, "first", midnight);
+        await CreateMeasurementAsync(token, 130, 85, 80, "last", midnight.AddDays(1).AddMilliseconds(-1));
+        await CreateMeasurementAsync(token, 140, 90, 90, "after", midnight.AddDays(1));
+        var result = await GetFilteredMeasurementsAsync(token, query);
+        Assert.Equal(expected.Split(','), result.Items.Select(x => x.Notes).ToArray());
+        Assert.Equal(expected.Split(',').Length, result.TotalCount);
+    }
+
+    [Theory]
+    [InlineData("minSystolicPressure=120", "C,B")]
+    [InlineData("maxSystolicPressure=120", "B,A")]
+    [InlineData("minDiastolicPressure=80", "C,B")]
+    [InlineData("maxDiastolicPressure=80", "B,A")]
+    [InlineData("minPulse=70", "C,B")]
+    [InlineData("maxPulse=70", "B,A")]
+    [InlineData("minSystolicPressure=120&maxSystolicPressure=120&minDiastolicPressure=80&maxDiastolicPressure=80&minPulse=70&maxPulse=70", "B")]
+    public async Task List_ShouldFilterNumericRanges(string query, string expected)
+    {
+        var token = await CreateUserAndLoginAsync();
+        var day = new DateTimeOffset(2026, 11, 12, 0, 0, 0, TimeSpan.Zero);
+        await CreateMeasurementAsync(token, 110, 70, 60, "A", day);
+        await CreateMeasurementAsync(token, 120, 80, 70, "B", day.AddHours(1));
+        await CreateMeasurementAsync(token, 130, 90, 80, "C", day.AddHours(2));
+        var result = await GetFilteredMeasurementsAsync(token, query);
+        Assert.Equal(expected.Split(','), result.Items.Select(x => x.Notes).ToArray());
+        Assert.Equal(expected.Split(',').Length, result.TotalCount);
+    }
+
+    [Theory]
+    [InlineData("date", "asc", "A,B,C")]
+    [InlineData("date", "desc", "C,B,A")]
+    [InlineData("systolicPressure", "asc", "B,C,A")]
+    [InlineData("systolicPressure", "desc", "A,C,B")]
+    [InlineData("diastolicPressure", "asc", "C,A,B")]
+    [InlineData("diastolicPressure", "desc", "B,A,C")]
+    [InlineData("pulse", "asc", "B,A,C")]
+    [InlineData("pulse", "desc", "C,A,B")]
+    public async Task List_ShouldSortByRequestedField(string field, string direction, string expected)
+    {
+        var token = await CreateUserAndLoginAsync();
+        var day = new DateTimeOffset(2026, 11, 12, 0, 0, 0, TimeSpan.Zero);
+        await CreateMeasurementAsync(token, 140, 80, 75, "A", day);
+        await CreateMeasurementAsync(token, 110, 90, 60, "B", day.AddHours(1));
+        await CreateMeasurementAsync(token, 125, 70, 90, "C", day.AddHours(2));
+        var result = await GetFilteredMeasurementsAsync(token, $"sortBy={field}&sortDirection={direction}");
+        Assert.Equal(expected.Split(','), result.Items.Select(x => x.Notes).ToArray());
+    }
+
+    [Fact]
+    public async Task List_ShouldFilterAttackLinksAndBodyPosition()
+    {
+        var token = await CreateUserAndLoginAsync();
+        var other = await CreateUserAndLoginAsync();
+        var firstAttack = await CreateFilterAttackAsync(token);
+        var secondAttack = await CreateFilterAttackAsync(token);
+        var foreignAttack = await CreateFilterAttackAsync(other);
+        await CreateFilterMeasurementAsync(token, firstAttack, "Sitting", "linked sitting");
+        await CreateFilterMeasurementAsync(token, secondAttack, "Standing", "linked standing");
+        await CreateFilterMeasurementAsync(token, null, "Lying", "unlinked lying");
+        await CreateMeasurementAsync(token, 120, 80, 70, "unknown position");
+        await CreateFilterMeasurementAsync(other, foreignAttack, "Sitting", "foreign");
+
+        Assert.Equal(2, (await GetFilteredMeasurementsAsync(token, "hasMigraineAttack=true")).TotalCount);
+        Assert.Equal(2, (await GetFilteredMeasurementsAsync(token, "hasMigraineAttack=false")).TotalCount);
+        Assert.Equal("linked sitting", Assert.Single((await GetFilteredMeasurementsAsync(token, $"migraineAttackId={firstAttack}&hasMigraineAttack=true&bodyPosition=Sitting")).Items).Notes);
+        Assert.Equal("linked standing", Assert.Single((await GetFilteredMeasurementsAsync(token, "bodyPosition=Standing")).Items).Notes);
+        Assert.Equal("unlinked lying", Assert.Single((await GetFilteredMeasurementsAsync(token, "bodyPosition=Lying&hasMigraineAttack=false")).Items).Notes);
+        Assert.Empty((await GetFilteredMeasurementsAsync(token, $"migraineAttackId={foreignAttack}")).Items);
+        Assert.Empty((await GetFilteredMeasurementsAsync(token, $"migraineAttackId={Guid.NewGuid()}")).Items);
+    }
+
+    [Fact]
+    public async Task List_ShouldFilterAndSortBeforePaginationAndIsolateUsers()
+    {
+        var token = await CreateUserAndLoginAsync();
+        var other = await CreateUserAndLoginAsync();
+        await CreateMeasurementAsync(token, 100, 70, 60, "excluded");
+        await CreateMeasurementAsync(token, 130, 80, 90, "A");
+        await CreateMeasurementAsync(token, 140, 85, 65, "B");
+        await CreateMeasurementAsync(token, 150, 90, 75, "C");
+        await CreateMeasurementAsync(other, 160, 95, 50, "foreign");
+        var query = "minSystolicPressure=130&sortBy=pulse&sortDirection=asc&pageSize=2";
+        var first = await GetFilteredMeasurementsAsync(token, query + "&page=1");
+        var second = await GetFilteredMeasurementsAsync(token, query + "&page=2");
+        var third = await GetFilteredMeasurementsAsync(token, query + "&page=3");
+        Assert.Equal(new[] { "B", "C" }, first.Items.Select(x => x.Notes).ToArray());
+        Assert.Equal("A", Assert.Single(second.Items).Notes);
+        Assert.Empty(third.Items);
+        Assert.Equal(3, first.TotalCount);
+        Assert.Equal(3, third.TotalCount);
+        Assert.Equal(2, first.TotalPages);
+        Assert.Equal(2, third.TotalPages);
+    }
+
+    [Fact]
+    public async Task List_ShouldKeepStableOrderingForTiedValues()
+    {
+        var token = await CreateUserAndLoginAsync();
+        for (var i = 0; i < 3; i++)
+            await CreateMeasurementAsync(token, 120, 80, 70, $"tie-{i}");
+        const string query = "sortBy=pulse&sortDirection=asc";
+        var all = await GetFilteredMeasurementsAsync(token, query);
+        var pageIds = new List<Guid>();
+        for (var page = 1; page <= 3; page++)
+        {
+            var result = await GetFilteredMeasurementsAsync(token, query + $"&pageSize=1&page={page}");
+            pageIds.Add(Assert.Single(result.Items).Id);
+        }
+        Assert.Equal(all.Items.Select(x => x.Id).ToArray(), pageIds.ToArray());
+        Assert.Equal(3, pageIds.Distinct().Count());
+    }
+
+    [Fact]
+    public async Task List_WithNoMatches_ShouldReturnEmptyPage()
+    {
+        var token = await CreateUserAndLoginAsync();
+        await CreateMeasurementAsync(token, 120, 80, 70, "outside");
+        var result = await GetFilteredMeasurementsAsync(token, "minPulse=100");
+        Assert.Empty(result.Items);
+        Assert.Equal(0, result.TotalCount);
+        Assert.Equal(0, result.TotalPages);
+    }
+
+    [Theory]
+    [InlineData("fromDate=2026-11-13&toDate=2026-11-12")]
+    [InlineData("from=2026-11-13T00:00:00Z&to=2026-11-12T00:00:00Z")]
+    [InlineData("fromDate=2026-11-12&to=2026-11-13T00:00:00Z")]
+    [InlineData("fromDate=invalid")]
+    [InlineData("minSystolicPressure=150&maxSystolicPressure=120")]
+    [InlineData("minDiastolicPressure=100&maxDiastolicPressure=80")]
+    [InlineData("minPulse=100&maxPulse=70")]
+    [InlineData("minSystolicPressure=0")]
+    [InlineData("maxDiastolicPressure=201")]
+    [InlineData("maxPulse=301")]
+    [InlineData("migraineAttackId=00000000-0000-0000-0000-000000000000")]
+    [InlineData("migraineAttackId=11111111-1111-1111-1111-111111111111&hasMigraineAttack=false")]
+    [InlineData("bodyPosition=99")]
+    [InlineData("sortBy=unknown")]
+    [InlineData("sortDirection=sideways")]
+    [InlineData("hasMigraineAttack=unknown")]
+    public async Task List_WithInvalidFilter_ShouldReturnBadRequest(string query)
+    {
+        var token = await CreateUserAndLoginAsync();
+        using var response = await SendAuthorizedAsync(HttpMethod.Get, "/api/vital-measurements?" + query, token);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task List_WithFilters_ShouldRequireAuthorization()
+    {
+        using var response = await _client.GetAsync("/api/vital-measurements?minPulse=70&sortBy=pulse");
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    private async Task<PagedResponse<VitalMeasurementResponse>> GetFilteredMeasurementsAsync(string token, string query)
+    {
+        using var response = await SendAuthorizedAsync(HttpMethod.Get, "/api/vital-measurements?" + query, token);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var options = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+        options.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+        var result = await response.Content.ReadFromJsonAsync<PagedResponse<VitalMeasurementResponse>>(options);
+        Assert.NotNull(result);
+        return result;
+    }
+
+    private async Task<Guid> CreateFilterAttackAsync(string token)
+    {
+        using var response = await SendAuthorizedAsync(HttpMethod.Post, "/api/migraine-attacks", token,
+            new { startDate = "2026-11-12", endDate = "2026-11-12", intensity = 5, painLocation = "LeftSide" });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        return result.GetProperty("id").GetGuid();
+    }
+
+    private async Task CreateFilterMeasurementAsync(string token, Guid? attackId, string position, string notes)
+    {
+        using var response = await SendAuthorizedAsync(HttpMethod.Post, "/api/vital-measurements", token,
+            new { systolicPressure = 120, diastolicPressure = 80, pulse = 70,
+                measuredAt = "2026-11-12T10:00:00Z", migraineAttackId = attackId, bodyPosition = position, notes });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+    }
+
     private async Task<VitalMeasurementStatisticsResponse> GetStatisticsAsync(
         string token, string query = "")
     {

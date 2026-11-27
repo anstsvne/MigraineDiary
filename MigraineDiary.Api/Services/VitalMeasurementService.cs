@@ -16,90 +16,178 @@ public sealed class VitalMeasurementService
         _dbContext = dbContext;
     }
 
-    public async Task<PagedResponse<VitalMeasurementResponse>>
-        GetAllAsync(
-            Guid userId,
-            PaginationRequest pagination,
-            CancellationToken cancellationToken = default)
+    public async Task<PagedResponse<VitalMeasurementResponse>> GetAllAsync(
+        Guid userId,
+        VitalMeasurementFilterRequest filter,
+        CancellationToken cancellationToken = default)
     {
-        var query =
-            _dbContext.VitalMeasurements
-                .AsNoTracking()
-                .Where(x =>
-                    x.UserId == userId);
+        ValidateFilters(filter);
 
-        var totalCount =
-            await query.CountAsync(
-                cancellationToken);
+        var query = _dbContext.VitalMeasurements
+            .AsNoTracking()
+            .Where(x => x.UserId == userId);
 
-        var skip =
-            ((long)pagination.Page - 1) *
-            pagination.PageSize;
+        query = ApplyPeriodFilter(query, filter.From, filter.To, filter.FromDate, filter.ToDate);
 
-        IReadOnlyList<VitalMeasurementResponse> items;
-
-        if (skip >= totalCount)
+        if (filter.MinSystolicPressure is int minSystolic)
+            query = query.Where(x => x.SystolicPressure >= minSystolic);
+        if (filter.MaxSystolicPressure is int maxSystolic)
+            query = query.Where(x => x.SystolicPressure <= maxSystolic);
+        if (filter.MinDiastolicPressure is int minDiastolic)
+            query = query.Where(x => x.DiastolicPressure >= minDiastolic);
+        if (filter.MaxDiastolicPressure is int maxDiastolic)
+            query = query.Where(x => x.DiastolicPressure <= maxDiastolic);
+        if (filter.MinPulse is int minPulse)
+            query = query.Where(x => x.Pulse >= minPulse);
+        if (filter.MaxPulse is int maxPulse)
+            query = query.Where(x => x.Pulse <= maxPulse);
+        if (filter.MigraineAttackId is Guid attackId)
+            query = query.Where(x => x.MigraineAttackId == attackId);
+        if (filter.HasMigraineAttack is bool linked)
+            query = query.Where(x => x.MigraineAttackId.HasValue == linked);
+        if (filter.BodyPosition.HasValue)
         {
-            items =
-                Array.Empty<VitalMeasurementResponse>();
-        }
-        else
-        {
-            items =
-                await query
-                    .OrderByDescending(
-                        x => x.MeasuredAt)
-                    .ThenBy(
-                        x => x.Id)
-                    .Skip(
-                        (int)skip)
-                    .Take(
-                        pagination.PageSize)
-                    .Select(x =>
-                        new VitalMeasurementResponse
-                        {
-                            Id = x.Id,
-
-                            MigraineAttackId = x.MigraineAttackId,
-                            BodyPosition = x.BodyPosition,
-
-                            SystolicPressure =
-                                x.SystolicPressure,
-
-                            DiastolicPressure =
-                                x.DiastolicPressure,
-
-                            Pulse =
-                                x.Pulse,
-
-                            MeasuredAt =
-                                x.MeasuredAt,
-
-                            Notes =
-                                x.Notes,
-
-                            CreatedAt =
-                                x.CreatedAt
-                        })
-                    .ToListAsync(
-                        cancellationToken);
+            var position = filter.BodyPosition.Value;
+            query = query.Where(x => x.BodyPosition == position);
         }
 
-        var totalPages =
-            totalCount == 0
-                ? 0
-                : (int)Math.Ceiling(
-                    totalCount /
-                    (double)pagination.PageSize);
+        var totalCount = await query.CountAsync(cancellationToken);
+        var skip = ((long)filter.Page - 1) * filter.PageSize;
+        IReadOnlyList<VitalMeasurementResponse> items = Array.Empty<VitalMeasurementResponse>();
+
+        if (skip < totalCount && skip <= int.MaxValue)
+        {
+            items = await ApplySorting(query, filter)
+                .Skip((int)skip)
+                .Take(filter.PageSize)
+                .Select(x => new VitalMeasurementResponse
+                {
+                    Id = x.Id,
+                    MigraineAttackId = x.MigraineAttackId,
+                    BodyPosition = x.BodyPosition,
+                    SystolicPressure = x.SystolicPressure,
+                    DiastolicPressure = x.DiastolicPressure,
+                    Pulse = x.Pulse,
+                    MeasuredAt = x.MeasuredAt,
+                    Notes = x.Notes,
+                    CreatedAt = x.CreatedAt
+                })
+                .ToListAsync(cancellationToken);
+        }
 
         return new PagedResponse<VitalMeasurementResponse>
         {
             Items = items,
-            Page = pagination.Page,
-            PageSize = pagination.PageSize,
+            Page = filter.Page,
+            PageSize = filter.PageSize,
             TotalCount = totalCount,
-            TotalPages = totalPages
+            TotalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)filter.PageSize)
         };
+    }
+
+    private static void ValidateFilters(VitalMeasurementFilterRequest filter)
+    {
+        if (filter.MinSystolicPressure > filter.MaxSystolicPressure ||
+            filter.MinDiastolicPressure > filter.MaxDiastolicPressure ||
+            filter.MinPulse > filter.MaxPulse)
+            throw new ArgumentException("Minimum value cannot exceed maximum value.");
+
+        if (filter.MigraineAttackId == Guid.Empty)
+            throw new ArgumentException("Migraine attack ID cannot be empty.");
+
+        if (filter.MigraineAttackId.HasValue && filter.HasMigraineAttack == false)
+            throw new ArgumentException("Migraine attack ID cannot be combined with hasMigraineAttack=false.");
+
+        if (filter.BodyPosition.HasValue && !Enum.IsDefined(filter.BodyPosition.Value))
+            throw new ArgumentException("Invalid body position.");
+
+        if (filter.SortBy?.ToLowerInvariant() is not ("date" or "systolicpressure" or "diastolicpressure" or "pulse"))
+            throw new ArgumentException("Invalid sortBy value.");
+
+        if (filter.SortDirection?.ToLowerInvariant() is not ("asc" or "desc"))
+            throw new ArgumentException("Invalid sortDirection value.");
+    }
+
+    private static IOrderedQueryable<VitalMeasurement> ApplySorting(
+        IQueryable<VitalMeasurement> query,
+        VitalMeasurementFilterRequest filter)
+    {
+        var ascending = filter.SortDirection.Equals("asc", StringComparison.OrdinalIgnoreCase);
+        var sortBy = filter.SortBy.ToLowerInvariant();
+
+        if (sortBy == "date")
+        {
+            return (ascending ? query.OrderBy(x => x.MeasuredAt) : query.OrderByDescending(x => x.MeasuredAt))
+                .ThenBy(x => x.Id);
+        }
+
+        var ordered = sortBy switch
+        {
+            "systolicpressure" => ascending ? query.OrderBy(x => x.SystolicPressure) : query.OrderByDescending(x => x.SystolicPressure),
+            "diastolicpressure" => ascending ? query.OrderBy(x => x.DiastolicPressure) : query.OrderByDescending(x => x.DiastolicPressure),
+            "pulse" => ascending ? query.OrderBy(x => x.Pulse) : query.OrderByDescending(x => x.Pulse),
+            _ => throw new ArgumentException("Invalid sortBy value.")
+        };
+
+        return ordered.ThenByDescending(x => x.MeasuredAt).ThenBy(x => x.Id);
+    }
+
+    private static IQueryable<VitalMeasurement> ApplyPeriodFilter(
+        IQueryable<VitalMeasurement> query,
+        DateTimeOffset? lowerTime,
+        DateTimeOffset? upperTime,
+        DateOnly? lowerDate,
+        DateOnly? upperDate)
+    {
+        if ((lowerTime.HasValue || upperTime.HasValue) &&
+            (lowerDate.HasValue || upperDate.HasValue))
+        {
+            throw new ArgumentException(
+                "Timestamp and calendar date filters cannot be combined.");
+        }
+
+        if ((lowerTime.HasValue && upperTime.HasValue &&
+             lowerTime.Value > upperTime.Value) ||
+            (lowerDate.HasValue && upperDate.HasValue &&
+             lowerDate.Value > upperDate.Value))
+        {
+            throw new ArgumentException(
+                "The period end cannot be earlier than the period start.");
+        }
+
+
+
+        if (lowerTime.HasValue)
+        {
+            var from = lowerTime.Value.ToUniversalTime();
+            query = query.Where(x => x.MeasuredAt >= from);
+        }
+
+        if (upperTime.HasValue)
+        {
+            var to = upperTime.Value.ToUniversalTime();
+            query = query.Where(x => x.MeasuredAt <= to);
+        }
+
+        if (lowerDate.HasValue)
+        {
+            var from = new DateTimeOffset(
+                lowerDate.Value.ToDateTime(TimeOnly.MinValue),
+                TimeSpan.Zero);
+            query = query.Where(x => x.MeasuredAt >= from);
+        }
+
+        // Exclusive midnight of the following UTC date includes the entire
+        // requested final day, including fractional seconds.
+        if (upperDate.HasValue && upperDate.Value != DateOnly.MaxValue)
+        {
+            var toExclusive = new DateTimeOffset(
+                upperDate.Value.AddDays(1).ToDateTime(TimeOnly.MinValue),
+                TimeSpan.Zero);
+            query = query.Where(x => x.MeasuredAt < toExclusive);
+        }
+
+        return query;
     }
 
     public async Task<VitalMeasurementStatisticsResponse> GetStatisticsAsync(
@@ -107,55 +195,11 @@ public sealed class VitalMeasurementService
         VitalMeasurementStatisticsRequest request,
         CancellationToken cancellationToken = default)
     {
-        if ((request.From.HasValue || request.To.HasValue) &&
-            (request.FromDate.HasValue || request.ToDate.HasValue))
-        {
-            throw new ArgumentException(
-                "Timestamp and calendar date filters cannot be combined.");
-        }
-
-        if ((request.From.HasValue && request.To.HasValue &&
-             request.From.Value > request.To.Value) ||
-            (request.FromDate.HasValue && request.ToDate.HasValue &&
-             request.FromDate.Value > request.ToDate.Value))
-        {
-            throw new ArgumentException(
-                "The period end cannot be earlier than the period start.");
-        }
-
         var query = _dbContext.VitalMeasurements
             .AsNoTracking()
             .Where(x => x.UserId == userId);
 
-        if (request.From.HasValue)
-        {
-            var from = request.From.Value.ToUniversalTime();
-            query = query.Where(x => x.MeasuredAt >= from);
-        }
-
-        if (request.To.HasValue)
-        {
-            var to = request.To.Value.ToUniversalTime();
-            query = query.Where(x => x.MeasuredAt <= to);
-        }
-
-        if (request.FromDate.HasValue)
-        {
-            var from = new DateTimeOffset(
-                request.FromDate.Value.ToDateTime(TimeOnly.MinValue),
-                TimeSpan.Zero);
-            query = query.Where(x => x.MeasuredAt >= from);
-        }
-
-        // Exclusive midnight of the following UTC date includes the entire
-        // requested final day, including fractional seconds.
-        if (request.ToDate.HasValue && request.ToDate.Value != DateOnly.MaxValue)
-        {
-            var toExclusive = new DateTimeOffset(
-                request.ToDate.Value.AddDays(1).ToDateTime(TimeOnly.MinValue),
-                TimeSpan.Zero);
-            query = query.Where(x => x.MeasuredAt < toExclusive);
-        }
+        query = ApplyPeriodFilter(query, request.From, request.To, request.FromDate, request.ToDate);
 
         var result = await query
             .GroupBy(x => 1)
