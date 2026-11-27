@@ -46,6 +46,29 @@ public sealed class MigraineAttacksController : ControllerBase
         return Ok(result);
     }
 
+    [HttpGet("calendar")]
+    [ProducesResponseType(typeof(MigraineAttackCalendarResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<MigraineAttackCalendarResponse>> GetCalendar(
+        [FromQuery] MigraineAttackCalendarRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (!Guid.TryParse(userIdValue, out var userId))
+        {
+            return Unauthorized();
+        }
+
+        var result = await _migraineAttackService.GetCalendarAsync(
+            userId,
+            request,
+            cancellationToken);
+
+        return Ok(result);
+    }
+
     [HttpGet("statistics")]
     public async Task<ActionResult<MigraineAttackStatisticsResponse>> GetStatistics(
     [FromQuery] MigraineAttackStatisticsRequest request,

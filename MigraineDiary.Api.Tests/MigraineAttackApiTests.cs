@@ -1244,6 +1244,108 @@ public sealed class MigraineAttackApiTests
         Assert.Equal(unknown.Id, page.Items[2].Id);
     }
 
+    [Fact]
+    public async Task Calendar_ShouldClipOverlapsAggregateAndIsolateUsers()
+    {
+        var token = await CreateUserAndLoginAsync();
+        var otherToken = await CreateUserAndLoginAsync();
+        var from = new DateOnly(2026, 11, 10);
+        var to = from.AddDays(4);
+
+        var first = await CreateAttackAsync(token,
+            CalendarRequest(from.AddDays(-2), from, 3));
+        var second = await CreateAttackAsync(token, new CreateMigraineAttackRequest
+        {
+            StartDate = from,
+            EndDate = from.AddDays(1),
+            StartAt = new DateTimeOffset(2026, 11, 10, 8, 0, 0, TimeSpan.Zero),
+            EndAt = null,
+            Intensity = 8,
+            PainLocation = PainLocation.LeftSide
+        });
+        var third = await CreateAttackAsync(token,
+            CalendarRequest(from.AddDays(1), from.AddDays(1), 6));
+        var last = await CreateAttackAsync(token,
+            CalendarRequest(to, to.AddDays(2), 4));
+
+        await CreateAttackAsync(token,
+            CalendarRequest(from.AddDays(-3), from.AddDays(-1), 10));
+        await CreateAttackAsync(token,
+            CalendarRequest(to.AddDays(1), to.AddDays(2), 10));
+        await CreateAttackAsync(otherToken,
+            CalendarRequest(from, to, 10));
+
+        using var response = await SendAuthorizedAsync(HttpMethod.Get,
+            "/api/migraine-attacks/calendar?from=2026-11-10&to=2026-11-14", token);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var calendar = await ReadJsonAsync<MigraineAttackCalendarResponse>(response);
+        Assert.NotNull(calendar);
+        Assert.Equal(from, calendar.From);
+        Assert.Equal(to, calendar.To);
+
+        Assert.Collection(calendar.Days,
+            day =>
+            {
+                Assert.Equal(from, day.Date);
+                Assert.Equal(2, day.AttackCount);
+                Assert.Equal(8, day.MaxIntensity);
+                Assert.Equal(new[] { first.Id, second.Id }.OrderBy(x => x).ToArray(),
+                    day.AttackIds.ToArray());
+            },
+            day =>
+            {
+                Assert.Equal(from.AddDays(1), day.Date);
+                Assert.Equal(2, day.AttackCount);
+                Assert.Equal(8, day.MaxIntensity);
+                Assert.Equal(new[] { second.Id, third.Id }.OrderBy(x => x).ToArray(),
+                    day.AttackIds.ToArray());
+            },
+            day =>
+            {
+                Assert.Equal(to, day.Date);
+                Assert.Equal(1, day.AttackCount);
+                Assert.Equal(4, day.MaxIntensity);
+                Assert.Equal(last.Id, Assert.Single(day.AttackIds));
+            });
+    }
+
+    [Theory]
+    [InlineData("2026-11-10", "2026-11-10")]
+    [InlineData("2026-01-01", "2027-01-01")]
+    public async Task Calendar_ShouldReturnEmptyDaysForValidEmptyPeriod(string from, string to)
+    {
+        var token = await CreateUserAndLoginAsync();
+        using var response = await SendAuthorizedAsync(HttpMethod.Get,
+            $"/api/migraine-attacks/calendar?from={from}&to={to}", token);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var calendar = await ReadJsonAsync<MigraineAttackCalendarResponse>(response);
+        Assert.NotNull(calendar);
+        Assert.Empty(calendar.Days);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("?from=2026-11-10")]
+    [InlineData("?to=2026-11-10")]
+    [InlineData("?from=2026-11-11&to=2026-11-10")]
+    [InlineData("?from=invalid&to=2026-11-10")]
+    [InlineData("?from=2026-01-01&to=2027-01-02")]
+    public async Task Calendar_ShouldRejectInvalidPeriod(string query)
+    {
+        var token = await CreateUserAndLoginAsync();
+        using var response = await SendAuthorizedAsync(HttpMethod.Get,
+            "/api/migraine-attacks/calendar" + query, token);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Calendar_ShouldRequireAuthorization()
+    {
+        using var response = await _client.GetAsync(
+            "/api/migraine-attacks/calendar?from=2026-11-10&to=2026-11-14");
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
     private static CreateMigraineAttackRequest CalendarRequest(
         DateOnly start,
         DateOnly end,

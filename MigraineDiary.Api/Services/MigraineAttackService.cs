@@ -211,6 +211,73 @@ public sealed class MigraineAttackService
         };
     }
 
+    private const int MaxCalendarDays = 366;
+
+    public async Task<MigraineAttackCalendarResponse> GetCalendarAsync(
+        Guid userId,
+        MigraineAttackCalendarRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request.From is not DateOnly from || request.To is not DateOnly to)
+        {
+            throw new ArgumentException("Необходимо указать начало и конец периода.");
+        }
+
+        if (to < from)
+        {
+            throw new ArgumentException("Конец периода не может быть раньше начала периода.");
+        }
+
+        if (to.DayNumber - from.DayNumber + 1 > MaxCalendarDays)
+        {
+            throw new ArgumentException("Период календаря не может превышать 366 дней.");
+        }
+
+        var attacks = await _dbContext.MigraineAttacks
+            .AsNoTracking()
+            .Where(x => x.UserId == userId &&
+                        x.StartDate <= to && x.EndDate >= from)
+            .Select(x => new { x.Id, x.StartDate, x.EndDate, x.Intensity })
+            .ToListAsync(cancellationToken);
+
+        var days = new SortedDictionary<DateOnly, (int MaxIntensity, List<Guid> AttackIds)>();
+
+        foreach (var attack in attacks)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var firstDay = Math.Max(attack.StartDate.DayNumber, from.DayNumber);
+            var lastDay = Math.Min(attack.EndDate.DayNumber, to.DayNumber);
+
+            for (var dayNumber = firstDay; dayNumber <= lastDay; dayNumber++)
+            {
+                var date = DateOnly.FromDayNumber(dayNumber);
+
+                if (!days.TryGetValue(date, out var day))
+                {
+                    day = (attack.Intensity, new List<Guid>());
+                }
+
+                day.MaxIntensity = Math.Max(day.MaxIntensity, attack.Intensity);
+                day.AttackIds.Add(attack.Id);
+                days[date] = day;
+            }
+        }
+
+        return new MigraineAttackCalendarResponse
+        {
+            From = from,
+            To = to,
+            Days = days.Select(x => new MigraineAttackCalendarDayResponse
+            {
+                Date = x.Key,
+                AttackCount = x.Value.AttackIds.Count,
+                MaxIntensity = x.Value.MaxIntensity,
+                AttackIds = x.Value.AttackIds.OrderBy(id => id).ToArray()
+            }).ToArray()
+        };
+    }
+
     public async Task<MigraineAttackStatisticsResponse> GetStatisticsAsync(
         Guid userId,
         MigraineAttackStatisticsRequest request,
