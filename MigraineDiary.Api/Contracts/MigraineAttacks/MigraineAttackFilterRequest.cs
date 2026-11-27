@@ -23,6 +23,16 @@ public sealed class MigraineAttackFilterRequest
     [Range(1, 10)]
     public int? MaxIntensity { get; init; }
 
+    [Range(0d, double.MaxValue)]
+    public double? MinDurationMinutes { get; init; }
+
+    [Range(0d, double.MaxValue)]
+    public double? MaxDurationMinutes { get; init; }
+
+    public string SortBy { get; init; } = "date";
+
+    public string SortDirection { get; init; } = "desc";
+
     public PainLocation? PainLocation { get; init; }
 
     public Guid? SymptomId { get; init; }

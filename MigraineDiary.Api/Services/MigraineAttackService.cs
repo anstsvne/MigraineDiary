@@ -171,6 +171,23 @@ public sealed class MigraineAttackService
                     m.MedicationId == medicationId));
         }
 
+        if (filter.MinDurationMinutes.HasValue || filter.MaxDurationMinutes.HasValue)
+        {
+            query = query.Where(x => x.StartAt.HasValue && x.EndAt.HasValue);
+
+            if (filter.MinDurationMinutes is double minDuration)
+            {
+                query = query.Where(x =>
+                    (x.EndAt!.Value - x.StartAt!.Value).TotalMinutes >= minDuration);
+            }
+
+            if (filter.MaxDurationMinutes is double maxDuration)
+            {
+                query = query.Where(x =>
+                    (x.EndAt!.Value - x.StartAt!.Value).TotalMinutes <= maxDuration);
+            }
+        }
+
         var totalCount = await query.CountAsync(cancellationToken);
 
         var skip = ((long)filter.Page - 1) * filter.PageSize;
@@ -183,7 +200,7 @@ public sealed class MigraineAttackService
         }
         else
         {
-            attacks = await query
+            attacks = await ApplySorting(query, filter)
                 .Include(x => x.Symptoms)
                     .ThenInclude(x => x.Symptom)
                 .Include(x => x.Triggers)
@@ -191,11 +208,7 @@ public sealed class MigraineAttackService
                 .Include(x => x.Medications)
                     .ThenInclude(x => x.Medication)
                 .AsSplitQuery()
-                .OrderByDescending(x => x.StartDate)
-                .ThenByDescending(x => x.StartAt.HasValue)
-                .ThenByDescending(x => x.StartAt)
-                .ThenByDescending(x => x.CreatedAt)
-                .ThenBy(x => x.Id)
+
                 .Skip((int)skip)
                 .Take(filter.PageSize)
                 .ToListAsync(cancellationToken);
@@ -221,6 +234,55 @@ public sealed class MigraineAttackService
             TotalCount = totalCount,
             TotalPages = totalPages
         };
+    }
+
+    private static IOrderedQueryable<MigraineAttack> ApplySorting(
+        IQueryable<MigraineAttack> query,
+        MigraineAttackFilterRequest filter)
+    {
+        var descending = string.Equals(filter.SortDirection.Trim(), "desc", StringComparison.OrdinalIgnoreCase);
+        var sortBy = filter.SortBy.Trim().ToLowerInvariant();
+
+        if (sortBy == "date")
+        {
+            return descending
+                ? query.OrderByDescending(x => x.StartDate)
+                    .ThenByDescending(x => x.StartAt.HasValue)
+                    .ThenByDescending(x => x.StartAt)
+                    .ThenByDescending(x => x.CreatedAt)
+                    .ThenBy(x => x.Id)
+                : query.OrderBy(x => x.StartDate)
+                    .ThenByDescending(x => x.StartAt.HasValue)
+                    .ThenBy(x => x.StartAt)
+                    .ThenByDescending(x => x.CreatedAt)
+                    .ThenBy(x => x.Id);
+        }
+
+        IOrderedQueryable<MigraineAttack> ordered;
+        if (sortBy == "intensity")
+        {
+            ordered = descending
+                ? query.OrderByDescending(x => x.Intensity)
+                : query.OrderBy(x => x.Intensity);
+        }
+        else
+        {
+            // The nullable timestamp difference is an interval in PostgreSQL.
+            // Unknown durations always follow known durations.
+            var knownFirst = query.OrderByDescending(x =>
+                x.StartAt.HasValue && x.EndAt.HasValue);
+
+            ordered = descending
+                ? knownFirst.ThenByDescending(x => x.EndAt - x.StartAt)
+                : knownFirst.ThenBy(x => x.EndAt - x.StartAt);
+        }
+
+        return ordered
+            .ThenByDescending(x => x.StartDate)
+            .ThenByDescending(x => x.StartAt.HasValue)
+            .ThenByDescending(x => x.StartAt)
+            .ThenByDescending(x => x.CreatedAt)
+            .ThenBy(x => x.Id);
     }
 
     private const int MaxCalendarDays = 366;
@@ -955,6 +1017,28 @@ public sealed class MigraineAttackService
             filter.To,
             filter.FromDate,
             filter.ToDate);
+
+        if ((filter.MinDurationMinutes is double min && (!double.IsFinite(min) || min < 0)) ||
+            (filter.MaxDurationMinutes is double max && (!double.IsFinite(max) || max < 0)))
+        {
+            throw new ArgumentException("Duration limits must be finite non-negative numbers.");
+        }
+
+        if (filter.MinDurationMinutes.HasValue && filter.MaxDurationMinutes.HasValue &&
+            filter.MinDurationMinutes.Value > filter.MaxDurationMinutes.Value)
+        {
+            throw new ArgumentException("Maximum duration must not be less than minimum duration.");
+        }
+
+        if (filter.SortBy?.Trim().ToLowerInvariant() is not ("date" or "intensity" or "duration"))
+        {
+            throw new ArgumentException("sortBy must be date, intensity or duration.");
+        }
+
+        if (filter.SortDirection?.Trim().ToLowerInvariant() is not ("asc" or "desc"))
+        {
+            throw new ArgumentException("sortDirection must be asc or desc.");
+        }
 
         if (filter.MinIntensity.HasValue &&
             filter.MaxIntensity.HasValue &&
