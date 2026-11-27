@@ -1492,6 +1492,192 @@ public sealed class MigraineAttackApiTests
         Assert.Equal(1, statistics.UnknownDurationAttackCount);
     }
 
+    [Fact]
+    public async Task ListDurationFilter_ShouldIncludeBoundariesAndExcludeUnknown()
+    {
+        var token = await CreateUserAndLoginAsync();
+        var start = new DateTimeOffset(2026, 11, 12, 22, 0, 0, TimeSpan.Zero);
+        var low = await CreateSortingAttackAsync(token, start, 60, 4);
+        var high = await CreateSortingAttackAsync(token, start, 240, 6);
+        await CreateSortingAttackAsync(token, start, 30, 7);
+        await CreateSortingAttackAsync(token, start, 241, 8);
+        await CreateAttackAsync(token, CalendarRequest(new DateOnly(2026, 11, 12), new DateOnly(2026, 11, 13)));
+        await CreateAttackAsync(token, new CreateMigraineAttackRequest
+        {
+            StartDate = new DateOnly(2026, 11, 12), EndDate = new DateOnly(2026, 11, 13),
+            StartAt = start, Intensity = 5, PainLocation = PainLocation.LeftSide
+        });
+        var result = await GetSortedAttacksAsync(token, "minDurationMinutes=60&maxDurationMinutes=240&sortBy=duration&sortDirection=asc");
+        Assert.Equal(2, result.TotalCount);
+        Assert.Equal(new[] { low.Id, high.Id }, result.Items.Select(x => x.Id).ToArray());
+    }
+
+    [Theory]
+    [InlineData("minDurationMinutes=60", 120)]
+    [InlineData("maxDurationMinutes=60", 30)]
+    public async Task ListDurationFilter_ShouldSupportSingleBound(string query, int expectedMinutes)
+    {
+        var token = await CreateUserAndLoginAsync();
+        var start = new DateTimeOffset(2026, 11, 12, 8, 0, 0, TimeSpan.Zero);
+        var shortAttack = await CreateSortingAttackAsync(token, start, 30, 4);
+        var longAttack = await CreateSortingAttackAsync(token, start, 120, 4);
+        var result = await GetSortedAttacksAsync(token, query);
+        Assert.Equal(1, result.TotalCount);
+        Assert.Equal(expectedMinutes == 30 ? shortAttack.Id : longAttack.Id, Assert.Single(result.Items).Id);
+    }
+
+    [Theory]
+    [InlineData("asc")]
+    [InlineData("desc")]
+    public async Task ListSorting_ShouldSortIntensity(string direction)
+    {
+        var token = await CreateUserAndLoginAsync();
+        var day = new DateOnly(2026, 11, 12);
+        var high = await CreateAttackAsync(token, CalendarRequest(day, day, 9));
+        var low = await CreateAttackAsync(token, CalendarRequest(day.AddDays(1), day.AddDays(1), 2));
+        var medium = await CreateAttackAsync(token, CalendarRequest(day.AddDays(2), day.AddDays(2), 5));
+        var result = await GetSortedAttacksAsync(token, $"sortBy=intensity&sortDirection={direction}");
+        var expected = direction == "asc" ? new[] { low.Id, medium.Id, high.Id } : new[] { high.Id, medium.Id, low.Id };
+        Assert.Equal(expected, result.Items.Select(x => x.Id).ToArray());
+    }
+
+    [Theory]
+    [InlineData("asc")]
+    [InlineData("desc")]
+    public async Task ListSorting_ShouldSortDurationWithUnknownLast(string direction)
+    {
+        var token = await CreateUserAndLoginAsync();
+        var start = new DateTimeOffset(2026, 11, 12, 22, 0, 0, TimeSpan.Zero);
+        var unknown = await CreateAttackAsync(token, CalendarRequest(new DateOnly(2026, 11, 15), new DateOnly(2026, 11, 15)));
+        var longAttack = await CreateSortingAttackAsync(token, start, 240, 4);
+        var zero = await CreateSortingAttackAsync(token, start, 0, 4);
+        var shortAttack = await CreateSortingAttackAsync(token, start, 60, 4);
+        var result = await GetSortedAttacksAsync(token, $"sortBy=duration&sortDirection={direction}");
+        var expected = direction == "asc"
+            ? new[] { zero.Id, shortAttack.Id, longAttack.Id, unknown.Id }
+            : new[] { longAttack.Id, shortAttack.Id, zero.Id, unknown.Id };
+        Assert.Equal(expected, result.Items.Select(x => x.Id).ToArray());
+    }
+
+    [Theory]
+    [InlineData("asc")]
+    [InlineData("desc")]
+    public async Task ListSorting_ShouldSortCalendarDates(string direction)
+    {
+        var token = await CreateUserAndLoginAsync();
+        var day = new DateOnly(2026, 11, 12);
+        var older = await CreateAttackAsync(token, CalendarRequest(day, day));
+        var unknown = await CreateAttackAsync(token, CalendarRequest(day.AddDays(1), day.AddDays(1)));
+        var early = await CreateSortingAttackAsync(token, new DateTimeOffset(2026, 11, 13, 8, 0, 0, TimeSpan.Zero), 30, 5);
+        var late = await CreateSortingAttackAsync(token, new DateTimeOffset(2026, 11, 13, 12, 0, 0, TimeSpan.Zero), 30, 5);
+        var result = await GetSortedAttacksAsync(token, $"sortBy=date&sortDirection={direction}");
+        var expected = direction == "asc"
+            ? new[] { older.Id, early.Id, late.Id, unknown.Id }
+            : new[] { late.Id, early.Id, unknown.Id, older.Id };
+        Assert.Equal(expected, result.Items.Select(x => x.Id).ToArray());
+    }
+
+    [Fact]
+    public async Task ListSorting_ShouldFilterBeforePaginationAndIsolateUsers()
+    {
+        var token = await CreateUserAndLoginAsync();
+        var other = await CreateUserAndLoginAsync();
+        var start = new DateTimeOffset(2026, 11, 12, 8, 0, 0, TimeSpan.Zero);
+        await CreateSortingAttackAsync(token, start, 120, 8);
+        var medium = await CreateSortingAttackAsync(token, start, 90, 6);
+        var low = await CreateSortingAttackAsync(token, start, 60, 4);
+        await CreateSortingAttackAsync(token, start, 30, 10);
+        await CreateSortingAttackAsync(other, start, 90, 7);
+        await CreateSortingAttackAsync(token, start.AddDays(5), 90, 9);
+        await CreateSortingAttackAsync(token, start, 90, 2);
+        var query = "fromDate=2026-11-12&toDate=2026-11-12&minIntensity=4&minDurationMinutes=60&sortBy=intensity&sortDirection=desc&pageSize=1";
+        var second = await GetSortedAttacksAsync(token, query + "&page=2");
+        Assert.Equal(3, second.TotalCount);
+        Assert.Equal(3, second.TotalPages);
+        Assert.Equal(medium.Id, Assert.Single(second.Items).Id);
+        var third = await GetSortedAttacksAsync(token, query + "&page=3");
+        Assert.Equal(low.Id, Assert.Single(third.Items).Id);
+        var fourth = await GetSortedAttacksAsync(token, query + "&page=4");
+        Assert.Equal(3, fourth.TotalCount);
+        Assert.Empty(fourth.Items);
+    }
+
+    [Fact]
+    public async Task ListDurationFilter_ShouldDistinguishZeroAndUnknown()
+    {
+        var token = await CreateUserAndLoginAsync();
+        var start = new DateTimeOffset(2026, 11, 12, 8, 0, 0, TimeSpan.Zero);
+        var zero = await CreateSortingAttackAsync(token, start, 0, 5);
+        await CreateSortingAttackAsync(token, start, 1, 5);
+        await CreateAttackAsync(token, CalendarRequest(new DateOnly(2026, 11, 12), new DateOnly(2026, 11, 12)));
+        var result = await GetSortedAttacksAsync(token, "minDurationMinutes=0&maxDurationMinutes=0");
+        Assert.Equal(1, result.TotalCount);
+        Assert.Equal(zero.Id, Assert.Single(result.Items).Id);
+    }
+
+    [Fact]
+    public async Task ListDurationFilter_ShouldReturnEmptyWhenOnlyUnknown()
+    {
+        var token = await CreateUserAndLoginAsync();
+        var day = new DateOnly(2026, 11, 12);
+        await CreateAttackAsync(token, CalendarRequest(day, day));
+        var result = await GetSortedAttacksAsync(token, "minDurationMinutes=0");
+        Assert.Equal(0, result.TotalCount);
+        Assert.Equal(0, result.TotalPages);
+        Assert.Empty(result.Items);
+    }
+
+    [Theory]
+    [InlineData("minDurationMinutes=-1")]
+    [InlineData("maxDurationMinutes=-1")]
+    [InlineData("minDurationMinutes=120&maxDurationMinutes=60")]
+    [InlineData("minDurationMinutes=NaN")]
+    [InlineData("maxDurationMinutes=Infinity")]
+    [InlineData("sortBy=invalid")]
+    [InlineData("sortDirection=invalid")]
+    public async Task ListSorting_ShouldRejectInvalidParameters(string query)
+    {
+        var token = await CreateUserAndLoginAsync();
+        using var response = await SendAuthorizedAsync(HttpMethod.Get, $"/api/migraine-attacks?{query}", token);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ListSorting_ShouldKeepPaginationStableForEqualValues()
+    {
+        var token = await CreateUserAndLoginAsync();
+        var start = new DateTimeOffset(2026, 11, 12, 8, 0, 0, TimeSpan.Zero);
+        for (var i = 0; i < 3; i++)
+            await CreateSortingAttackAsync(token, start, 60, 5);
+        const string query = "sortBy=duration&sortDirection=asc";
+        var all = await GetSortedAttacksAsync(token, query);
+        var ids = new List<Guid>();
+        for (var page = 1; page <= 3; page++)
+        {
+            var result = await GetSortedAttacksAsync(token, query + $"&pageSize=1&page={page}");
+            Assert.Equal(3, result.TotalCount);
+            ids.Add(Assert.Single(result.Items).Id);
+        }
+        Assert.Equal(all.Items.Select(x => x.Id).ToArray(), ids.ToArray());
+        Assert.Equal(3, ids.Distinct().Count());
+    }
+
+    private Task<MigraineAttackResponse> CreateSortingAttackAsync(
+        string token, DateTimeOffset start, double durationMinutes, int intensity)
+    {
+        return CreateAttackAsync(token, CreateAttackRequest(
+            start, start.AddMinutes(durationMinutes), intensity, PainLocation.LeftSide, "Sorting test"));
+    }
+
+    private async Task<PagedResponse<MigraineAttackResponse>> GetSortedAttacksAsync(string token, string query)
+    {
+        using var response = await SendAuthorizedAsync(HttpMethod.Get, $"/api/migraine-attacks?{query}", token);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await ReadJsonAsync<PagedResponse<MigraineAttackResponse>>(response);
+        Assert.NotNull(result);
+        return result;
+    }
+
     private static CreateMigraineAttackRequest CalendarRequest(
         DateOnly start,
         DateOnly end,
