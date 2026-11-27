@@ -330,8 +330,13 @@ public sealed class MigraineAttackService
                 MinIntensity = null,
                 MaxIntensity = null,
                 AverageDurationMinutes = null,
+                MaxDurationMinutes = null,
+
                 KnownDurationAttackCount = 0,
-                UnknownDurationAttackCount = 0
+                UnknownDurationAttackCount = 0,
+
+                MedicationEffectiveness =
+                    Array.Empty<MedicationEffectivenessStatisticsItemResponse>()
             };
         }
 
@@ -415,6 +420,32 @@ public sealed class MigraineAttackService
             .OrderByDescending(x => x.Count)
             .ThenBy(x => x.Name)
             .ToListAsync(cancellationToken);
+        // Группировка эффективности применения препаратов.
+        // Учитываются только записи из выбранного периода.
+
+        var medicationEffectiveness = await query
+            .SelectMany(x => x.Medications)
+            .GroupBy(x => new
+            {
+                x.MedicationId,
+                x.Medication.Name,
+                x.Effectiveness
+            })
+            .Select(group => new MedicationEffectivenessStatisticsItemResponse
+            {
+                MedicationId = group.Key.MedicationId,
+
+                MedicationName = group.Key.Name,
+
+                Effectiveness = group.Key.Effectiveness,
+
+                // Количество записей о применении препарата
+                // с соответствующим результатом.
+                Count = group.Count()
+            })
+            .OrderBy(x => x.MedicationName)
+            .ThenBy(x => x.Effectiveness)
+            .ToListAsync(cancellationToken);
 
         return new MigraineAttackStatisticsResponse
         {
@@ -434,13 +465,19 @@ public sealed class MigraineAttackService
                 ? null
                 : Math.Round(durations.Average(), 2),
 
+            MaxDurationMinutes = durations.Count == 0
+                ? null
+                : Math.Round(durations.Max(), 2),
+
             KnownDurationAttackCount = durations.Count,
 
             UnknownDurationAttackCount = attacks.Count - durations.Count,
 
             Symptoms = symptoms,
             Triggers = triggers,
-            Medications = medications
+            Medications = medications,
+
+            MedicationEffectiveness = medicationEffectiveness
         };
     }
 

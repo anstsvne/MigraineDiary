@@ -14,6 +14,8 @@ public sealed class MigraineAttackStatisticsResponse
 
     public double? AverageDurationMinutes { get; init; }
 
+    public double? MaxDurationMinutes { get; init; }
+
     public int KnownDurationAttackCount { get; init; }
 
     public int UnknownDurationAttackCount { get; init; }
@@ -26,4 +28,9 @@ public sealed class MigraineAttackStatisticsResponse
 
     public IReadOnlyList<StatisticsItemResponse> Medications { get; init; }
         = Array.Empty<StatisticsItemResponse>();
+
+    public IReadOnlyList<MedicationEffectivenessStatisticsItemResponse>
+        MedicationEffectiveness
+    { get; init; }
+        = Array.Empty<MedicationEffectivenessStatisticsItemResponse>();
 }
