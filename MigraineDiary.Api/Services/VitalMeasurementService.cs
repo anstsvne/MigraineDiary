@@ -60,6 +60,9 @@ public sealed class VitalMeasurementService
                         {
                             Id = x.Id,
 
+                            MigraineAttackId = x.MigraineAttackId,
+                            BodyPosition = x.BodyPosition,
+
                             SystolicPressure =
                                 x.SystolicPressure,
 
@@ -113,6 +116,8 @@ public sealed class VitalMeasurementService
                 new VitalMeasurementResponse
                 {
                     Id = x.Id,
+                    MigraineAttackId = x.MigraineAttackId,
+                    BodyPosition = x.BodyPosition,
                     SystolicPressure =
                         x.SystolicPressure,
                     DiastolicPressure =
@@ -137,10 +142,18 @@ public sealed class VitalMeasurementService
                 "Measurement date and time are required.");
         }
 
+        await ValidateAttackOwnershipAsync(
+            userId,
+            request.MigraineAttackId,
+            cancellationToken);
+
         var measurement =
             new VitalMeasurement
             {
                 UserId = userId,
+
+                MigraineAttackId = request.MigraineAttackId,
+                BodyPosition = request.BodyPosition,
 
                 SystolicPressure =
                     request.SystolicPressure,
@@ -193,6 +206,23 @@ public sealed class VitalMeasurementService
         if (measurement is null)
         {
             return null;
+        }
+
+        if (request.HasMigraineAttackId)
+        {
+            await ValidateAttackOwnershipAsync(
+                userId,
+                request.MigraineAttackId,
+                cancellationToken);
+
+            measurement.MigraineAttackId =
+                request.MigraineAttackId;
+        }
+
+        if (request.HasBodyPosition)
+        {
+            measurement.BodyPosition =
+                request.BodyPosition;
         }
 
         measurement.SystolicPressure =
@@ -254,6 +284,12 @@ public sealed class VitalMeasurementService
             Id =
                 measurement.Id,
 
+            MigraineAttackId =
+                measurement.MigraineAttackId,
+
+            BodyPosition =
+                measurement.BodyPosition,
+
             SystolicPressure =
                 measurement.SystolicPressure,
 
@@ -272,6 +308,28 @@ public sealed class VitalMeasurementService
             CreatedAt =
                 measurement.CreatedAt
         };
+    }
+
+    private async Task ValidateAttackOwnershipAsync(
+        Guid userId,
+        Guid? attackId,
+        CancellationToken cancellationToken)
+    {
+        if (!attackId.HasValue)
+        {
+            return;
+        }
+
+        var belongsToUser = await _dbContext.MigraineAttacks
+            .AnyAsync(
+                x => x.Id == attackId.Value && x.UserId == userId,
+                cancellationToken);
+
+        if (!belongsToUser)
+        {
+            throw new ArgumentException(
+                "Указанный приступ мигрени не найден или недоступен.");
+        }
     }
 
     private static string? NormalizeNotes(

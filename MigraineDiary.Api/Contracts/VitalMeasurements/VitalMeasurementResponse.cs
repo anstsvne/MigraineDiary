@@ -1,8 +1,14 @@
+using MigraineDiary.Api.Enums;
+
 namespace MigraineDiary.Api.Contracts.VitalMeasurements;
 
 public sealed class VitalMeasurementResponse
 {
     public Guid Id { get; init; }
+
+    public Guid? MigraineAttackId { get; init; }
+
+    public BodyPosition? BodyPosition { get; init; }
 
     public int SystolicPressure { get; init; }
 

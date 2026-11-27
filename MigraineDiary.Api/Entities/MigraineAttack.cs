@@ -37,4 +37,7 @@ public sealed class MigraineAttack
 
     public ICollection<AttackMedication> Medications { get; set; }
         = new List<AttackMedication>();
+
+    public ICollection<VitalMeasurement> VitalMeasurements { get; set; }
+        = new List<VitalMeasurement>();
 }

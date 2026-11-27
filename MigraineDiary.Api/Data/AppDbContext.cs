@@ -345,6 +345,18 @@ public sealed class AppDbContext : DbContext
         {
             entity.HasKey(x => x.Id);
 
+            entity.Property(x => x.BodyPosition)
+                .HasConversion<string>()
+                .HasMaxLength(30)
+                .IsRequired(false);
+
+            entity.HasOne(x => x.MigraineAttack)
+                .WithMany(x => x.VitalMeasurements)
+                .HasForeignKey(x => x.MigraineAttackId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(x => x.MigraineAttackId);
+
             entity.Property(x => x.SystolicPressure)
                 .IsRequired();
 

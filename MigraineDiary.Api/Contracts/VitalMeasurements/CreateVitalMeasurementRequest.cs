@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using MigraineDiary.Api.Enums;
 
 namespace MigraineDiary.Api.Contracts.VitalMeasurements;
 
@@ -18,4 +19,9 @@ public sealed class CreateVitalMeasurementRequest
 
     [MaxLength(1000)]
     public string? Notes { get; init; }
+
+    public Guid? MigraineAttackId { get; init; }
+
+    [EnumDataType(typeof(BodyPosition))]
+    public BodyPosition? BodyPosition { get; init; }
 }
