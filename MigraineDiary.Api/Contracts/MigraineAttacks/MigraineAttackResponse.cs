@@ -1,4 +1,5 @@
-﻿using MigraineDiary.Api.Enums;
+﻿using MigraineDiary.Api.Contracts.VitalMeasurements;
+using MigraineDiary.Api.Enums;
 
 namespace MigraineDiary.Api.Contracts.MigraineAttacks;
 
@@ -36,4 +37,7 @@ public sealed class MigraineAttackResponse
 
     public IReadOnlyCollection<AttackMedicationResponse> Medications { get; init; }
         = Array.Empty<AttackMedicationResponse>();
+
+    // null means the measurements were not loaded (for example, in a paged list).
+    public IReadOnlyCollection<VitalMeasurementResponse>? VitalMeasurements { get; init; }
 }

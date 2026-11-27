@@ -1,5 +1,6 @@
 using MigraineDiary.Api.Contracts.Common;
 using MigraineDiary.Api.Contracts.MigraineAttacks;
+using MigraineDiary.Api.Contracts.VitalMeasurements;
 using MigraineDiary.Api.Data;
 using MigraineDiary.Api.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -192,9 +193,12 @@ public sealed class MigraineAttackService
                 .ToListAsync(cancellationToken);
         }
 
-        var items = attacks
-            .Select(MapToResponse)
-            .ToList();
+        var items = new List<MigraineAttackResponse>();
+
+        foreach (var attack in attacks)
+        {
+            items.Add(MapToResponse(attack));
+        }
 
         var totalPages = totalCount == 0
             ? 0
@@ -493,6 +497,7 @@ public sealed class MigraineAttackService
                 .ThenInclude(x => x.Trigger)
             .Include(x => x.Medications)
                 .ThenInclude(x => x.Medication)
+            .Include(x => x.VitalMeasurements.Where(m => m.UserId == userId))
             .AsSplitQuery()
             .SingleOrDefaultAsync(
                 x => x.Id == attackId && x.UserId == userId,
@@ -500,7 +505,9 @@ public sealed class MigraineAttackService
 
         return attack is null
             ? null
-            : MapToResponse(attack);
+            : MapToResponse(
+                attack,
+                includeVitalMeasurements: true);
     }
 
     public async Task<MigraineAttackResponse?> UpdateAsync(
@@ -671,7 +678,8 @@ public sealed class MigraineAttackService
     }
 
     private static MigraineAttackResponse MapToResponse(
-        MigraineAttack attack)
+        MigraineAttack attack,
+        bool includeVitalMeasurements = false)
     {
         return new MigraineAttackResponse
         {
@@ -702,6 +710,25 @@ public sealed class MigraineAttackService
 
             Notes = attack.Notes,
             CreatedAt = attack.CreatedAt,
+
+            VitalMeasurements = includeVitalMeasurements
+                ? attack.VitalMeasurements
+                    .OrderByDescending(x => x.MeasuredAt)
+                    .ThenBy(x => x.Id)
+                    .Select(x => new VitalMeasurementResponse
+                    {
+                        Id = x.Id,
+                        MigraineAttackId = x.MigraineAttackId,
+                        BodyPosition = x.BodyPosition,
+                        SystolicPressure = x.SystolicPressure,
+                        DiastolicPressure = x.DiastolicPressure,
+                        Pulse = x.Pulse,
+                        MeasuredAt = x.MeasuredAt,
+                        Notes = x.Notes,
+                        CreatedAt = x.CreatedAt
+                    })
+                    .ToArray()
+                : null,
 
             Symptoms = attack.Symptoms
                 .OrderBy(x => x.Symptom.Name)
